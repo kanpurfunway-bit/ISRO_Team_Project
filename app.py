@@ -595,7 +595,13 @@ def fetch_and_store_openmeteo(cities, start_date, end_date, record_type="history
     Each city is its own short transaction so ingestion never blocks reads. (FIX 1)
     """
     global _last_sync_time
-    base_url = "https://archive-api.open-meteo.com/v1/archive" if record_type == "history" else "https://api.open-meteo.com/v1/forecast"
+    api_key = os.environ.get("OPENMETEO_API_KEY")
+    
+    if record_type == "history":
+        base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
+    else:
+        base_url = "https://customer-api.open-meteo.com/v1/forecast" if api_key else "https://api.open-meteo.com/v1/forecast"
+        
     total_inserted = 0
 
     for city in cities:
@@ -605,6 +611,9 @@ def fetch_and_store_openmeteo(cities, start_date, end_date, record_type="history
             "daily": ["temperature_2m_max","precipitation_sum","wind_speed_10m_max","relative_humidity_2m_mean"],
             "timezone": "Asia/Kolkata"
         }
+        if api_key:
+            params["apikey"] = api_key
+            
         try:
             responses = openmeteo.weather_api(base_url, params=params)
             if not responses:

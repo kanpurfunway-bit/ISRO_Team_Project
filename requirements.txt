@@ -1,0 +1,13 @@
+flask
+gunicorn
+psycopg2-binary
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+requests
+openmeteo-requests
+requests-cache
+retry-requests
+python-dotenv

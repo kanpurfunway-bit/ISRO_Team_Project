@@ -1,0 +1,17 @@
+# render.yaml — Render Blueprint for Climate Twin India v7.1
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: climate-twin-india
+    runtime: python
+    region: singapore  # Closest to India for low latency to Supabase AP-South-1
+    plan: starter      # 512MB RAM minimum for ML workloads
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --preload --access-logfile - --error-logfile -
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Must be set manually in Render dashboard
+      - key: PYTHON_VERSION
+        value: "3.11.9"

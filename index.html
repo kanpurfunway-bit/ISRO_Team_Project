@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climate Twin India | Mission Control</title>
+    <meta name="description" content="Climate Twin India — Real-time climate monitoring, AI-powered forecasting, and disaster risk assessment for all Indian states and union territories.">
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* CSS Variables - Premium Glassmorphism */
+        :root[data-theme="dark"] {
+            --bg-base: #000000;
+            --bg-glass: rgba(15, 15, 20, 0.6);
+            --bg-sidebar: rgba(10, 10, 15, 0.8);
+            --text-primary: #FFFFFF;
+            --text-secondary: #A1A1AA;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(255, 255, 255, 0.15);
+            --accent: #0070F3;
+            --accent-glow: rgba(0, 112, 243, 0.3);
+            --danger: #FF453A;
+            --success: #32D74B;
+            --warning: #FF9F0A;
+            --glass-blur: blur(24px);
+        }
+        :root[data-theme="light"] {
+            --bg-base: #F5F5F7;
+            --bg-glass: rgba(255, 255, 255, 0.7);
+            --bg-sidebar: rgba(255, 255, 255, 0.85);
+            --text-primary: #1D1D1F;
+            --text-secondary: #86868B;
+            --border: rgba(0, 0, 0, 0.08);
+            --border-glow: rgba(0, 0, 0, 0.15);
+            --accent: #0066CC;
+            --accent-glow: rgba(0, 102, 204, 0.2);
+            --danger: #FF3B30;
+            --success: #34C759;
+            --warning: #FF9500;
+            --glass-blur: blur(24px);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg-base); color: var(--text-primary); transition: background 0.3s, color 0.3s; overflow: hidden; }
+        .number-font { font-family: 'Space Grotesk', sans-serif; font-variant-numeric: tabular-nums; }
+        
+        #app-container { display: flex; height: 100vh; width: 100vw; background: radial-gradient(circle at 50% -20%, var(--accent-glow), transparent 60%); }
+        
+        .sidebar { width: 260px; background: var(--bg-sidebar); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; box-shadow: 4px 0 24px rgba(0,0,0,0.05); }
+        .brand { padding: 24px; font-weight: 700; font-size: 1.2rem; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+        .nav-items { padding: 16px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+        .nav-item { padding: 12px 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text-secondary); transition: all 0.2s; font-weight: 500; position: relative; }
+        .nav-item:hover { background: rgba(150, 150, 150, 0.1); color: var(--text-primary); }
+        .nav-item.active { background: var(--accent); color: #fff; box-shadow: 0 4px 12px var(--accent-glow); }
+        .nav-badge { position: absolute; right: 12px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; min-width: 20px; text-align: center; }
+        
+        .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        
+        .topbar { height: 70px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; background: var(--bg-sidebar); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); z-index: 50; }
+        .search-box { position: relative; display: flex; align-items: center; background: rgba(150,150,150,0.1); border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; width: 320px; gap: 8px; transition: border-color 0.2s, box-shadow 0.2s; }
+        .search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .search-box input { background: transparent; border: none; color: var(--text-primary); outline: none; width: 100%; font-size: 14px; }
+        .search-suggestions { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-sidebar); backdrop-filter: var(--glass-blur); border: 1px solid var(--border); border-radius: 12px; margin-top: 8px; display: none; flex-direction: column; max-height: 300px; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); z-index: 200; }
+        .search-item { padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 14px; transition: background 0.15s; }
+        .search-item:hover, .search-item.kb-active { background: rgba(150,150,150,0.15); }
+        .search-item:last-child { border-bottom: none; }
+        
+        .view-content { flex: 1; overflow-y: auto; padding: 32px; display: none; animation: pageEnter 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .view-content.active { display: block; }
+        @keyframes pageEnter { 
+            from { opacity: 0; transform: translateY(15px) scale(0.98); filter: blur(8px); } 
+            to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } 
+        }
+
+        #global-loader {
+            position: fixed; top: 0; left: 0; height: 3px; background: var(--accent);
+            width: 0%; z-index: 99999; transition: width 0.4s ease, opacity 0.3s ease;
+            box-shadow: 0 0 15px var(--accent), 0 0 5px var(--accent);
+        }
+        .loader-pulse {
+            animation: pulse-glow 1.5s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            from { box-shadow: 0 0 10px var(--accent); }
+            to { box-shadow: 0 0 20px var(--accent), 0 0 30px var(--accent); }
+        }
+        
+        .card { background: var(--bg-glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--border); border-radius: 16px; padding: 24px; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; box-shadow: 0 8px 32px rgba(0,0,0,0.05); position: relative; overflow: hidden; }
+        .card:hover { transform: translateY(-2px); border-color: var(--border-glow); box-shadow: 0 12px 40px rgba(0,0,0,0.1); }
+        
+        h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
+        .subtitle { color: var(--text-secondary); font-size: 15px; margin-bottom: 24px; }
+        
+        .btn { padding: 10px 20px; border-radius: 12px; border: 1px solid transparent; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
+        .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 12px var(--accent-glow); }
+        .btn-primary:hover { filter: brightness(1.1); transform: scale(1.02); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
+        .btn-secondary { background: rgba(150,150,150,0.1); color: var(--text-primary); border-color: var(--border); backdrop-filter: blur(10px); }
+        .btn-secondary:hover { background: rgba(150,150,150,0.2); }
+        .btn-danger { background: rgba(255,69,58,0.15); color: var(--danger); border-color: rgba(255,69,58,0.3); }
+        .btn-danger:hover { background: rgba(255,69,58,0.25); }
+        .btn .spinner { display: none; width: 16px; height: 16px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        .btn.loading .spinner { display: inline-block; }
+        .btn.loading span { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; background: rgba(150,150,150,0.1); border: 1px solid var(--border); }
+        .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+        .dot.pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(50,215,75, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(50,215,75, 0); } 100% { box-shadow: 0 0 0 0 rgba(50,215,75, 0); } }
+        
+        .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 24px; }
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 24px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 24px; }
+        
+        .skeleton { background: linear-gradient(90deg, rgba(150,150,150,0.1) 25%, rgba(150,150,150,0.2) 50%, rgba(150,150,150,0.1) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+        .skeleton-text { height: 16px; margin-bottom: 8px; width: 100%; }
+        .skeleton-title { height: 36px; width: 60%; margin-bottom: 12px; }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        
+        .ai-spinner-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .ai-spinner-overlay.active { opacity: 1; pointer-events: all; }
+        .ai-ring { width: 64px; height: 64px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px; }
+        
+        .table-container { overflow-x: auto; width: 100%; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th, td { padding: 16px 24px; border-bottom: 1px solid var(--border); font-size: 14px; }
+        th { color: var(--text-secondary); font-weight: 500; position: sticky; top: 0; background: var(--bg-sidebar); backdrop-filter: var(--glass-blur); cursor: pointer; user-select: none; }
+        th:hover { color: var(--text-primary); }
+        tbody tr:hover { background: rgba(150,150,150,0.05); }
+        
+        .sparkline-canvas { width: 100%; height: 40px; margin-top: 12px; }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(150,150,150,0.3); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(150,150,150,0.5); }
+
+        #map-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; backdrop-filter: blur(10px); padding: 40px; animation: fadeIn 0.3s forwards; }
+        .map-wrapper { position: relative; width: 100%; max-width: 1400px; height: 100%; margin: 0 auto; box-shadow: 0 24px 80px rgba(0,0,0,0.4); border-radius: 20px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-base); }
+        #leaflet-map { width: 100%; height: 100%; }
+        .map-overlay { position: absolute; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 12px; background: var(--bg-glass); backdrop-filter: var(--glass-blur); padding: 16px; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 260px; }
+        .map-legend { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+        .map-legend-title { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; font-weight: 600; }
+        .map-legend-bar { height: 8px; border-radius: 4px; margin-bottom: 4px; }
+        .map-legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); }
+        
+        .glass-popup .leaflet-popup-content-wrapper { background: transparent; box-shadow: none; padding: 0; }
+        .glass-popup .leaflet-popup-tip { display: none; }
+        .glass-popup .leaflet-popup-content { margin: 0; }
+
+        .menu-btn { display: none; background: transparent; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer; }
+        @media (max-width: 768px) {
+            .menu-btn { display: block; }
+            .sidebar { position: fixed; height: 100%; transform: translateX(-100%); }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .search-box { display: none; }
+            .grid-2, .grid-4, .grid-3 { grid-template-columns: 1fr; }
+            .view-content { padding: 16px; }
+            #map-modal { padding: 16px; }
+        }
+        
+        .trend-up { color: var(--danger); font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+        .trend-down { color: var(--success); font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+        .trend-up-good { color: var(--success); font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+        
+        .fab { position: fixed; bottom: 32px; right: 32px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 10px 30px var(--accent-glow); cursor: pointer; z-index: 900; transition: transform 0.2s; }
+        .fab:hover { transform: scale(1.1) rotate(90deg); }
+
+        /* Toast with retry (FIX 6) */
+        #toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10001; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+        .toast-item { background: var(--text-primary); color: var(--bg-base); padding: 12px 24px; border-radius: 12px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 12px; pointer-events: auto; animation: toastIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .toast-item.error { background: var(--danger); color: #fff; }
+        .toast-item.success { background: var(--success); color: #fff; }
+        .toast-item .toast-retry { background: rgba(255,255,255,0.2); border: none; color: inherit; padding: 4px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .toast-item .toast-retry:hover { background: rgba(255,255,255,0.3); }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(20px); } }
+
+        /* Alert cards (FIX 10) */
+        .alert-card { padding: 16px 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-glass); margin-bottom: 12px; transition: all 0.2s; }
+        .alert-card:hover { border-color: var(--border-glow); transform: translateX(4px); }
+        .alert-card .alert-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .alert-card .alert-title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .alert-severity { padding: 3px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .alert-severity.CRITICAL { background: rgba(255,59,48,0.2); color: var(--danger); }
+        .alert-severity.WARNING { background: rgba(255,149,10,0.2); color: var(--warning); }
+        .alert-severity.WATCH { background: rgba(255,204,0,0.2); color: #FFCC00; }
+        .alert-severity.INFO { background: rgba(0,112,243,0.2); color: var(--accent); }
+        .alert-card .alert-body { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+        .alert-card .alert-meta { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+
+        /* Empty state (FIX 6) */
+        .empty-state { text-align: center; padding: 60px 24px; color: var(--text-secondary); }
+        .empty-state i { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+        .empty-state h3 { color: var(--text-primary); margin-bottom: 8px; }
+        .empty-state p { font-size: 14px; max-width: 400px; margin: 0 auto; line-height: 1.6; }
+
+        /* System status row (FIX 12) */
+        .status-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); align-items: center; }
+        .status-row:last-child { border-bottom: none; }
+        .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .status-dot.green { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .status-dot.yellow { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+        .status-dot.red { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+        .status-dot.gray { background: var(--text-secondary); }
+    </style>
+</head>
+<body>
+
+<div id="global-loader"></div>
+<div id="ai-loading-overlay" class="ai-spinner-overlay">
+    <div class="ai-ring"></div>
+    <div style="font-weight: 600; font-size: 18px; color: #fff;">Running XGBoost Pipeline...</div>
+    <div style="color: var(--text-secondary); margin-top: 8px; font-size: 14px;">Analyzing 10 years of telemetry data</div>
+</div>
+<div id="app-container">
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <i class="ph-fill ph-planet" style="color:var(--accent); font-size: 28px;"></i>
+            <span>ClimateTwin</span>
+        </div>
+        <div class="nav-items">
+            <div class="nav-item active" onclick="switchView('dashboard', this)"><i class="ph ph-squares-four"></i><span>Mission Control</span></div>
+            <div class="nav-item" onclick="switchView('analytics', this)"><i class="ph ph-chart-line-up"></i><span>Analytics Hub</span></div>
+            <div class="nav-item" onclick="switchView('ai', this)"><i class="ph ph-brain"></i><span>AI Forecaster</span></div>
+            <div class="nav-item" onclick="switchView('twin', this)"><i class="ph ph-hexagon"></i><span>Digital Twin</span></div>
+            <div class="nav-item" onclick="switchView('alerts', this)"><i class="ph ph-warning-diamond"></i><span>Alert Center</span><span class="nav-badge" id="alert-badge" style="display:none;">0</span></div>
+            <div class="nav-item" onclick="switchView('data', this)"><i class="ph ph-table"></i><span>Climate Data</span></div>
+        </div>
+        <div style="padding: 24px; border-top: 1px solid var(--border);">
+            <div class="nav-item" onclick="openMap()"><i class="ph ph-map-trifold"></i><span>Risk Map</span></div>
+        </div>
+    </aside>
+
+    <main class="main-area">
+        <header class="topbar">
+            <div style="display:flex; align-items:center; gap:16px;">
+                <button class="menu-btn" onclick="toggleSidebar()"><i class="ph ph-list"></i></button>
+                <div class="search-box" id="search-box">
+                    <i class="ph ph-magnifying-glass" style="color:var(--text-secondary)"></i>
+                    <input type="text" id="global-search" placeholder="Search states, districts..." autocomplete="off">
+                    <div class="search-suggestions" id="search-suggestions"></div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <button class="btn btn-secondary" style="padding:8px 16px; font-size:13px;" onclick="exportPDF()"><i class="ph ph-file-pdf"></i> PDF</button>
+                <div class="status-badge" id="topbar-status" style="color:var(--success)"><div class="dot pulse" style="color:var(--success)"></div> Systems Online</div>
+                <button onclick="toggleTheme()" style="background:transparent; border:none; color:var(--text-primary); cursor:pointer;"><i class="ph ph-moon" id="theme-icon" style="font-size:24px;"></i></button>
+            </div>
+        </header>
+
+        <!-- MISSION CONTROL VIEW (FIX 12 — Dynamic Status) -->
+        <div id="view-dashboard" class="view-content active">
+            <h1>Mission Control</h1>
+            <p class="subtitle">Real-time planetary telemetry and systems overview.</p>
+            
+            <div class="grid-4" id="kpi-container">
+                <div class="card skeleton"><div class="skeleton-title"></div><div class="skeleton-text"></div><div class="skeleton-text"></div></div>
+                <div class="card skeleton"><div class="skeleton-title"></div><div class="skeleton-text"></div><div class="skeleton-text"></div></div>
+                <div class="card skeleton"><div class="skeleton-title"></div><div class="skeleton-text"></div><div class="skeleton-text"></div></div>
+                <div class="card skeleton"><div class="skeleton-title"></div><div class="skeleton-text"></div><div class="skeleton-text"></div></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h3 style="margin-bottom:20px; display:flex; align-items:center; gap:8px;"><i class="ph ph-activity"></i> System Diagnostics</h3>
+                    <div id="system-diagnostics">
+                        <div class="status-row"><span>Open-Meteo Ingestion Pipeline</span><span class="status-indicator" id="sys-openmeteo"><span class="status-dot gray"></span> Checking...</span></div>
+                        <div class="status-row"><span>XGBoost AI Forecast Models</span><span class="status-indicator" id="sys-ai"><span class="status-dot yellow"></span> Untrained</span></div>
+                        <div class="status-row"><span>PostgreSQL Database Pool</span><span class="status-indicator" id="sys-db"><span class="status-dot gray"></span> Checking...</span></div>
+                        <div class="status-row"><span>Digital Twin Risk Engine</span><span class="status-indicator" id="sys-risk"><span class="status-dot gray"></span> Checking...</span></div>
+                        <div class="status-row"><span>API Gateway</span><span class="status-indicator" id="sys-api"><span class="status-dot gray"></span> Checking...</span></div>
+                    </div>
+                    <button class="btn btn-secondary" style="width:100%; margin-top:20px;" onclick="syncData()"><div class="spinner"></div><span><i class="ph ph-arrows-clockwise"></i> Force Manual Sync</span></button>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom:20px; display:flex; align-items:center; gap:8px;"><i class="ph ph-lightning"></i> Command Actions</h3>
+                    <div style="display:flex; gap:16px; flex-direction:column;">
+                        <button class="btn btn-primary" id="btn-train" onclick="trainModels()"><div class="spinner"></div><span><i class="ph ph-brain"></i> Initialize AI Training</span></button>
+                        <button class="btn btn-secondary" id="btn-predict" onclick="generatePredictions()"><div class="spinner"></div><span><i class="ph ph-chart-polar"></i> Run Predictive Horizon</span></button>
+                        <button class="btn btn-secondary" onclick="openMap()"><i class="ph ph-map-trifold"></i> Open GeoSpatial Map</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ANALYTICS VIEW -->
+        <div id="view-analytics" class="view-content">
+            <div style="display:flex; justify-content:space-between; margin-bottom:24px; align-items:center; flex-wrap:wrap; gap:16px;">
+                <div>
+                    <h1>Historical Analytics & State Comparisons</h1>
+                    <p class="subtitle">Macro trends aggregated across all telemetry sources.</p>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <div class="time-selector" id="time-selector" style="position:relative; background:rgba(150,150,150,0.1); padding:4px; border-radius:12px; display:flex; gap:4px; border:1px solid var(--border);">
+                        <div class="time-slider-thumb" id="time-slider-thumb" style="position:absolute; top:4px; left:4px; height:calc(100% - 8px); width:48px; background:var(--bg-sidebar); border-radius:8px; transition:transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); box-shadow:0 2px 8px rgba(0,0,0,0.1); z-index:0;"></div>
+                        <button class="btn time-btn active" style="position:relative; z-index:1; padding:6px 16px; border:none; background:transparent; font-weight:600; color:var(--text-primary); transition:color 0.3s;" onclick="updateTrends(7, this)">7D</button>
+                        <button class="btn time-btn" style="position:relative; z-index:1; padding:6px 16px; border:none; background:transparent; font-weight:500; color:var(--text-secondary); transition:color 0.3s;" onclick="updateTrends(30, this)">30D</button>
+                        <button class="btn time-btn" style="position:relative; z-index:1; padding:6px 16px; border:none; background:transparent; font-weight:500; color:var(--text-secondary); transition:color 0.3s;" onclick="updateTrends(180, this)">6M</button>
+                        <button class="btn time-btn" style="position:relative; z-index:1; padding:6px 16px; border:none; background:transparent; font-weight:500; color:var(--text-secondary); transition:color 0.3s;" onclick="updateTrends(365, this)">1Y</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid-2">
+                <div class="card"><h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Temperature Trend</h3><div style="height:280px"><canvas id="chart-temp"></canvas></div></div>
+                <div class="card"><h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Rainfall Trend</h3><div style="height:280px"><canvas id="chart-rain"></canvas></div></div>
+            </div>
+            
+            <div class="grid-2">
+                <div class="card"><h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Top 10 Hottest States</h3><div style="height:300px"><canvas id="chart-top-hottest"></canvas></div></div>
+                <div class="card"><h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Top 10 Wettest States</h3><div style="height:300px"><canvas id="chart-top-wettest"></canvas></div></div>
+                <div class="card"><h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Top 10 Humid States</h3><div style="height:300px"><canvas id="chart-top-humid"></canvas></div></div>
+                <div class="card"><h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Top 10 Windiest States</h3><div style="height:300px"><canvas id="chart-top-windiest"></canvas></div></div>
+            </div>
+            
+            <div class="card" style="margin-bottom: 24px;">
+                <h3 style="margin-bottom:20px;">State Comparison Dashboard</h3>
+                <div style="display:flex; gap:16px; margin-bottom:24px;">
+                    <select id="comp-state-1" class="btn btn-secondary" style="outline:none; width:100%;"><option value="Maharashtra">Maharashtra</option></select>
+                    <span style="font-weight:700; color:var(--text-secondary); align-self:center;">VS</span>
+                    <select id="comp-state-2" class="btn btn-secondary" style="outline:none; width:100%;"><option value="Delhi">Delhi</option></select>
+                    <button class="btn btn-primary" onclick="updateComparisonChart()">Compare</button>
+                </div>
+                <div style="height:350px"><canvas id="chart-state-compare"></canvas></div>
+            </div>
+        </div>
+
+        <!-- AI FORECASTER VIEW (UNTOUCHED) -->
+        <div id="view-ai" class="view-content">
+            <h1>XGBoost AI Forecaster</h1>
+            <p class="subtitle">Predictive models powered by extreme gradient boosting.</p>
+            
+            <div class="grid-2">
+                <div class="card">
+                    <h3 style="margin-bottom:20px;">Predictive Horizon Control</h3>
+                    <div style="display:flex; gap:16px; margin-bottom:32px;">
+                        <select id="ai-state-select" class="btn btn-secondary" style="outline:none; width:100%; justify-content:space-between;"><option value="Maharashtra">Maharashtra</option></select>
+                        <button id="btn-predict-ai" class="btn btn-primary" onclick="generatePredictions()"><div class="spinner"></div><span>Generate</span></button>
+                    </div>
+                    <h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Forecast Comparison</h3>
+                    <div style="height:200px"><canvas id="chart-forecast-compare"></canvas></div>
+                </div>
+                
+                <div class="card">
+                    <h3 style="margin-bottom:20px;">Prediction Accuracy Panel</h3>
+                    <div style="display:flex; justify-content:space-around; align-items:center; margin-bottom:24px;">
+                        <div style="position:relative; width:160px; height:160px; border-radius:50%; border:12px solid var(--border); border-top-color:var(--accent); border-right-color:var(--accent); display:flex; align-items:center; justify-content:center; flex-direction:column; box-shadow: 0 0 40px var(--accent-glow);">
+                            <span class="number-font" style="font-size:36px; font-weight:700;" id="ai-conf">--%</span>
+                            <span style="color:var(--text-secondary); font-size:12px; margin-top:4px;">Confidence</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:16px; width: 100%; padding-left:32px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                                <span style="color:var(--text-secondary); font-size:14px;">Prediction Accuracy</span>
+                                <span id="ai-acc" class="number-font" style="font-weight:600; color:var(--success);">--%</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px;">
+                                <span style="color:var(--text-secondary); font-size:14px;">Forecast Stability</span>
+                                <span id="ai-stab" class="number-font" style="font-weight:600; color:var(--warning);">--</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="text-align:center; color:var(--text-secondary); font-size:13px; line-height:1.6;">Model R² Score computed dynamically using XGBoost over 10 years of Open-Meteo telemetry history.</p>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-bottom:24px;">
+                <h3 style="margin-bottom:16px; font-size:15px; color:var(--text-secondary);">Prediction Timeline</h3>
+                <div style="height:250px"><canvas id="chart-prediction-timeline"></canvas></div>
+            </div>
+            
+            <div class="card" style="padding:0; overflow:hidden;">
+                <h3 style="padding: 24px; margin: 0; font-size:15px; color:var(--text-primary); border-bottom:1px solid var(--border);">Forecast History</h3>
+                <div class="table-container" style="max-height: 300px;">
+                    <table>
+                        <thead>
+                            <tr><th>Target Date</th><th>Period</th><th>Temp (°C)</th><th>Rain (mm)</th><th>Humid (%)</th><th>Wind (km/h)</th><th>Risk Score</th></tr>
+                        </thead>
+                        <tbody id="forecast-history-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- DIGITAL TWIN VIEW -->
+        <div id="view-twin" class="view-content">
+            <h1>Digital Twin Engine</h1>
+            <p class="subtitle">Simulate multi-factor climate risk scenarios.</p>
+            <div class="grid-2">
+                <div class="card">
+                    <h3 style="margin-bottom:20px;">Scenario Builder</h3>
+                    <select id="twin-state" class="btn btn-secondary" style="width:100%; margin-bottom:32px; justify-content:space-between;"><option value="Maharashtra">Maharashtra</option></select>
+                    
+                    <div style="margin-bottom:28px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px;"><span>Temperature Shift</span><span id="val-t" class="number-font" style="font-weight:600;">+0 °C</span></div>
+                        <input type="range" id="sim-t" min="-5" max="10" step="0.5" value="0" style="width:100%; cursor:ew-resize;">
+                    </div>
+                    <div style="margin-bottom:28px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px;"><span>Rainfall Shift</span><span id="val-r" class="number-font" style="color:var(--accent); font-weight:600;">+0 mm</span></div>
+                        <input type="range" id="sim-r" min="-200" max="500" step="10" value="0" style="width:100%; cursor:ew-resize;">
+                    </div>
+                    <div style="margin-bottom:32px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px;"><span>Humidity Shift</span><span id="val-h" class="number-font" style="color:var(--success); font-weight:600;">+0 %</span></div>
+                        <input type="range" id="sim-h" min="-30" max="30" step="1" value="0" style="width:100%; cursor:ew-resize;">
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;" onclick="runSimulation()"><i class="ph ph-play"></i> Run Simulation</button>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom:20px;">Risk Assessment</h3>
+                    <div style="margin-bottom:28px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px;"><span>Flood Risk</span><span id="risk-val-f" class="number-font" style="font-weight:600;">0%</span></div>
+                        <div style="height:10px; background:var(--border); border-radius:5px; overflow:hidden;"><div id="risk-bar-f" style="height:100%; width:0%; background:var(--accent); transition:width 0.8s cubic-bezier(0.16, 1, 0.3, 1);"></div></div>
+                    </div>
+                    <div style="margin-bottom:28px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px;"><span>Heatwave Risk</span><span id="risk-val-h" class="number-font" style="font-weight:600;">0%</span></div>
+                        <div style="height:10px; background:var(--border); border-radius:5px; overflow:hidden;"><div id="risk-bar-h" style="height:100%; width:0%; background:var(--danger); transition:width 0.8s cubic-bezier(0.16, 1, 0.3, 1);"></div></div>
+                    </div>
+                    <div style="margin-bottom:28px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px;"><span>Drought Risk</span><span id="risk-val-d" class="number-font" style="font-weight:600;">0%</span></div>
+                        <div style="height:10px; background:var(--border); border-radius:5px; overflow:hidden;"><div id="risk-bar-d" style="height:100%; width:0%; background:var(--warning); transition:width 0.8s cubic-bezier(0.16, 1, 0.3, 1);"></div></div>
+                    </div>
+                    
+                    <div style="padding-top:24px; border-top:1px solid var(--border); margin-top:32px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                            <h4 style="margin:0; display:flex; align-items:center; gap:8px;"><i class="ph ph-clock-counter-clockwise"></i> Time Travel Replay</h4>
+                            <span id="twin-year" class="number-font" style="background:rgba(150,150,150,0.1); padding:6px 16px; border-radius:16px; font-weight:700; border:1px solid var(--border);">2026</span>
+                        </div>
+                        <div style="display:flex; gap:20px; align-items:center;">
+                            <button class="btn btn-secondary" id="btn-play" style="min-width: 100px;"><i class="ph ph-play"></i> Play</button>
+                            <input type="range" id="time-slider" min="2020" max="2035" value="2026" style="flex:1; cursor:ew-resize;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-top: 24px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:16px;">
+                    <h3 style="font-size:15px; color:var(--text-secondary);">Risk Trend Timeline & Evolution</h3>
+                    <div style="background:rgba(150,150,150,0.1); padding:4px; border-radius:12px; display:flex; gap:4px; border:1px solid var(--border);">
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:var(--bg-sidebar);" onclick="updateRiskTrend('flood')" id="btn-rt-flood">Flood</button>
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:transparent;" onclick="updateRiskTrend('heatwave')" id="btn-rt-heatwave">Heatwave</button>
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:transparent;" onclick="updateRiskTrend('drought')" id="btn-rt-drought">Drought</button>
+                    </div>
+                </div>
+                <div style="height:250px"><canvas id="chart-risk-trend"></canvas></div>
+            </div>
+        </div>
+
+        <!-- ALERT CENTER VIEW (FIX 10) -->
+        <div id="view-alerts" class="view-content">
+            <div style="display:flex; justify-content:space-between; margin-bottom:24px; align-items:center; flex-wrap:wrap; gap:16px;">
+                <div>
+                    <h1>Disaster Alert Center</h1>
+                    <p class="subtitle">Real-time climate threat monitoring and early warnings.</p>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span id="alert-count-badge" class="status-badge" style="color:var(--text-secondary);">0 Active</span>
+                    <button class="btn btn-secondary" onclick="refreshAlerts()"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+                </div>
+            </div>
+            
+            <div class="grid-4" id="alert-summary">
+                <div class="card" style="border-left: 3px solid var(--danger);">
+                    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">Heatwave Alerts</div>
+                    <div class="number-font" style="font-size:28px; font-weight:700;" id="alert-heat-count">0</div>
+                </div>
+                <div class="card" style="border-left: 3px solid var(--accent);">
+                    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">Flood Alerts</div>
+                    <div class="number-font" style="font-size:28px; font-weight:700;" id="alert-flood-count">0</div>
+                </div>
+                <div class="card" style="border-left: 3px solid var(--warning);">
+                    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">Drought Alerts</div>
+                    <div class="number-font" style="font-size:28px; font-weight:700;" id="alert-drought-count">0</div>
+                </div>
+                <div class="card" style="border-left: 3px solid var(--text-secondary);">
+                    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">Wind Alerts</div>
+                    <div class="number-font" style="font-size:28px; font-weight:700;" id="alert-wind-count">0</div>
+                </div>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden;">
+                <div style="padding:20px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <h3 style="font-size:15px;">Active Alerts</h3>
+                    <div style="display:flex; gap:4px; background:rgba(150,150,150,0.1); padding:4px; border-radius:12px; border:1px solid var(--border);">
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:var(--bg-sidebar);" onclick="filterAlerts('all')" id="filter-all">All</button>
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:transparent;" onclick="filterAlerts('heatwave')" id="filter-heatwave">Heatwave</button>
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:transparent;" onclick="filterAlerts('flood')" id="filter-flood">Flood</button>
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:transparent;" onclick="filterAlerts('drought')" id="filter-drought">Drought</button>
+                        <button class="btn btn-secondary" style="padding:4px 12px; font-size:12px; border:none; background:transparent;" onclick="filterAlerts('wind')" id="filter-wind">Wind</button>
+                    </div>
+                </div>
+                <div id="alert-list" style="max-height:500px; overflow-y:auto; padding:16px 24px;">
+                    <div class="empty-state"><i class="ph ph-shield-check"></i><h3>No Active Alerts</h3><p>All systems are operating within normal parameters. Alerts will appear here when climate thresholds are exceeded.</p></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA TABLE VIEW -->
+        <div id="view-data" class="view-content">
+            <div style="display:flex; justify-content:space-between; margin-bottom:24px; align-items:center; flex-wrap:wrap; gap:16px;">
+                <div>
+                    <h1>Enterprise Climate Table</h1>
+                    <p class="subtitle">Complete telemetry data records with filtering and export.</p>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-secondary" onclick="exportCSV()"><i class="ph ph-download-simple"></i> Export CSV</button>
+                </div>
+            </div>
+            
+            <div class="card" style="padding:0; display:flex; flex-direction:column; height: calc(100vh - 240px);">
+                <div class="table-container" style="flex:1; overflow-y:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable('date')">Date <i class="ph ph-caret-up-down"></i></th>
+                                <th onclick="sortTable('state')">State <i class="ph ph-caret-up-down"></i></th>
+                                <th onclick="sortTable('district')">District <i class="ph ph-caret-up-down"></i></th>
+                                <th onclick="sortTable('temperature')">Temp (°C) <i class="ph ph-caret-up-down"></i></th>
+                                <th onclick="sortTable('rainfall')">Rain (mm) <i class="ph ph-caret-up-down"></i></th>
+                                <th onclick="sortTable('humidity')">Humid (%) <i class="ph ph-caret-up-down"></i></th>
+                                <th onclick="sortTable('wind_speed')">Wind (km/h) <i class="ph ph-caret-up-down"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+                <div style="padding:16px 24px; display:flex; justify-content:space-between; align-items:center; background:rgba(150,150,150,0.05); border-top:1px solid var(--border); color:var(--text-secondary); font-size:14px;">
+                    <span>Showing <span id="table-count" class="number-font" style="color:var(--text-primary); font-weight:700;">0</span> records</span>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-secondary" style="padding:6px 12px; font-size:13px;" onclick="changePage(-1)">Prev</button>
+                        <span style="display:flex; align-items:center; padding: 0 12px; font-weight:600;" id="page-num">1</span>
+                        <button class="btn btn-secondary" style="padding:6px 12px; font-size:13px;" onclick="changePage(1)">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- FAB -->
+<div class="fab" onclick="syncData()" title="Sync Open-Meteo">
+    <i class="ph ph-arrows-clockwise"></i>
+</div>
+
+<!-- MAP MODAL (FIX 4 + FIX 5 — Enhanced with legends) -->
+<div id="map-modal">
+    <div class="map-wrapper">
+        <button class="btn btn-secondary" style="position:absolute; top:20px; left:20px; z-index:1001; background:var(--bg-glass); backdrop-filter:blur(10px);" onclick="closeMap()"><i class="ph ph-arrow-left"></i> Back to Dashboard</button>
+        <div id="leaflet-map"></div>
+        <div class="map-overlay">
+            <h3 style="font-size:15px; margin-bottom:12px;">Risk Layers</h3>
+            <button class="btn btn-secondary" style="border:none; justify-content:flex-start;" onclick="setLayer('climate')" id="layer-btn-climate"><i class="ph-fill ph-map-pin" style="color:var(--accent)"></i> Real-time Sensors</button>
+            <button class="btn btn-secondary" style="border:none; justify-content:flex-start;" onclick="setLayer('flood')" id="layer-btn-flood"><i class="ph-fill ph-waves" style="color:var(--accent)"></i> Flood Risk</button>
+            <button class="btn btn-secondary" style="border:none; justify-content:flex-start;" onclick="setLayer('heatwave')" id="layer-btn-heatwave"><i class="ph-fill ph-sun" style="color:var(--danger)"></i> Heatwave Risk</button>
+            <button class="btn btn-secondary" style="border:none; justify-content:flex-start;" onclick="setLayer('drought')" id="layer-btn-drought"><i class="ph-fill ph-plant" style="color:var(--warning)"></i> Drought Risk</button>
+            <div id="map-legend" class="map-legend" style="display:none;">
+                <div class="map-legend-title" id="legend-title">Risk Scale</div>
+                <div class="map-legend-bar" id="legend-bar"></div>
+                <div class="map-legend-labels"><span>Low</span><span>Moderate</span><span>High</span><span>Extreme</span></div>
+            </div>
+            <div id="map-state-info" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px; display:none;">
+                <h4 id="ms-title" style="font-size:14px; margin-bottom:8px;">State</h4>
+                <div style="font-size:13px; color:var(--text-secondary);">Avg Temp: <span id="ms-t" style="color:var(--text-primary)">-</span></div>
+                <div style="font-size:13px; color:var(--text-secondary);">Avg Rain: <span id="ms-r" style="color:var(--text-primary)">-</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container (FIX 6) -->
+<div id="toast-container"></div>
+
+<!-- SCRIPTS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+    // ═══════════════════════════════════════════════════════════════
+    //  UTILITIES (FIX 11 — Performance)
+    // ═══════════════════════════════════════════════════════════════
+    const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+    let activeFetches = 0;
+    const showGlobalLoader = () => {
+        activeFetches++;
+        const gl = document.getElementById('global-loader');
+        if(gl) {
+            gl.classList.add('loader-pulse');
+            gl.style.opacity = '1';
+            gl.style.width = Math.min(80, (activeFetches * 30)) + '%';
+        }
+    };
+    const hideGlobalLoader = () => {
+        activeFetches--;
+        if (activeFetches <= 0) {
+            activeFetches = 0;
+            const gl = document.getElementById('global-loader');
+            if(gl) {
+                gl.style.width = '100%';
+                gl.classList.remove('loader-pulse');
+                setTimeout(() => { gl.style.opacity = '0'; setTimeout(() => { gl.style.width = '0%'; }, 300); }, 300);
+            }
+        }
+    };
+
+    const fetchWithTimeout = (url, opts = {}, timeoutMs = 15000) => {
+        showGlobalLoader();
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(url, { ...opts, signal: controller.signal }).finally(() => { clearTimeout(id); hideGlobalLoader(); });
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  TOAST SYSTEM (FIX 6 — Error handling with retry)
+    // ═══════════════════════════════════════════════════════════════
+    const toast = (msg, type = 'info', retryFn = null) => {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        el.className = `toast-item ${type}`;
+        el.innerHTML = msg + (retryFn ? ' <button class="toast-retry" onclick="this.parentElement._retry()">Retry</button>' : '');
+        if (retryFn) el._retry = () => { el.remove(); retryFn(); };
+        container.appendChild(el);
+        setTimeout(() => { el.style.animation = 'toastOut 0.3s forwards'; setTimeout(() => el.remove(), 300); }, retryFn ? 8000 : 3500);
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  THEME ENGINE
+    // ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
+    //  CHART REGISTRY (FIX 8 — Prevent memory leaks)
+    // ═══════════════════════════════════════════════════════════════
+    let charts = {};
+    let currentChartDays = 30;
+
+    const toggleTheme = () => {
+        const root = document.documentElement;
+        const isDark = root.getAttribute('data-theme') === 'dark';
+        root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+        document.getElementById('theme-icon').className = isDark ? 'ph ph-sun' : 'ph ph-moon';
+        localStorage.setItem('theme', isDark ? 'light' : 'dark');
+        // FIX 8 — Safe chart re-render on theme switch
+        if(charts.temp) updateTrends(currentChartDays);
+        if(charts.aiComp) generatePredictions();
+    };
+    if(localStorage.getItem('theme') === 'light') toggleTheme();
+
+    // ═══════════════════════════════════════════════════════════════
+    //  NAVIGATION
+    // ═══════════════════════════════════════════════════════════════
+    const switchView = (id, el) => {
+        const current = document.querySelector('.view-content.active');
+        if(current && current.id !== 'view-' + id) {
+            current.style.opacity = '0';
+            current.style.transform = 'translateY(10px) scale(0.98)';
+            current.style.filter = 'blur(4px)';
+            current.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 1, 1)';
+            
+            setTimeout(() => {
+                current.style = '';
+                document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+                document.getElementById('view-' + id).classList.add('active');
+            }, 200);
+        } else {
+            document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-' + id).classList.add('active');
+        }
+
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if(el) el.classList.add('active');
+        
+        setTimeout(() => {
+            if(id === 'analytics' && !charts.temp) updateTrends(30);
+            if(id === 'twin' && !charts.riskTrend) updateRiskTrend('flood');
+            if(id === 'alerts') refreshAlerts();
+            if(window.innerWidth <= 768) toggleSidebar();
+        }, 200);
+    };
+    const toggleSidebar = () => document.getElementById('sidebar').classList.toggle('mobile-open');
+
+    const safeDestroyChart = (key) => {
+        if (charts[key]) {
+            try { charts[key].destroy(); } catch(e) { /* already destroyed */ }
+            charts[key] = null;
+        }
+    };
+
+    const safeDestroyCharts = (...keys) => keys.forEach(safeDestroyChart);
+
+    // ═══════════════════════════════════════════════════════════════
+    //  API SETUP
+    // ═══════════════════════════════════════════════════════════════
+    const API = window.location.origin;
+    let globalData = [];
+    let globalRisk = [];
+    let globalAlerts = [];
+    let currentAlertFilter = 'all';
+
+    // ═══════════════════════════════════════════════════════════════
+    //  KPI CARDS
+    // ═══════════════════════════════════════════════════════════════
+    const buildKPICard = (title, icon, color, data) => {
+        if(!data) return `<div class="card skeleton"><div class="skeleton-title"></div><div class="skeleton-text"></div></div>`;
+        const trendClass = data.trend > 0 ? (title==='Rainfall'? 'trend-up-good':'trend-up') : (data.trend < 0 ? (title==='Rainfall'?'trend-down':'trend-down'):'trend-neutral');
+        const arrow = data.trend > 0 ? '↑' : (data.trend < 0 ? '↓' : '-');
+        const unit = title==='Temperature'?'°C':title==='Rainfall'?'mm':title==='Humidity'?'%':'km/h';
+        return `
+            <div class="card">
+                <div style="color:var(--text-secondary); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:500; font-size:14px;">${title}</span>
+                    <i class="ph-fill ${icon}" style="font-size:20px; color:${color}"></i>
+                </div>
+                <div class="number-font" style="font-size:32px; font-weight:700;">${data.value}${unit}</div>
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px;">
+                    <div>
+                        <div style="color:var(--text-secondary); font-size:13px; margin-bottom:4px;">${data.state}</div>
+                        <div class="${trendClass}">${arrow} ${Math.abs(data.trend)}% from last</div>
+                    </div>
+                </div>
+                <div class="sparkline-canvas"><canvas id="spark-${title}"></canvas></div>
+            </div>
+        `;
+    };
+
+    const drawSparkline = (id, dataArr, color) => {
+        const ctx = document.getElementById('spark-'+id);
+        if(!ctx) return;
+        // FIX 8 — destroy existing sparkline
+        const key = 'spark_'+id;
+        safeDestroyChart(key);
+        charts[key] = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: { labels: dataArr.map((_,i)=>i), datasets: [{ data: dataArr, borderColor: color, borderWidth: 2, pointRadius: 0, fill: false, tension: 0.3 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } }, layout: { padding: 0 }, animation: { duration: 600 } }
+        });
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  MISSION CONTROL DATA FETCH (FIX 6 + FIX 12)
+    // ═══════════════════════════════════════════════════════════════
+    const fetchSystem = async () => {
+        try {
+            const [r1, r2, r3] = await Promise.all([
+                fetchWithTimeout(`${API}/api/climate`),
+                fetchWithTimeout(`${API}/api/analytics`),
+                fetchWithTimeout(`${API}/api/risk`)
+            ]);
+            const d1 = await r1.json(); const d2 = await r2.json(); const d3 = await r3.json();
+            
+            if(d3.risks) globalRisk = d3.risks;
+            
+            if(d1.status === 'online' && d1.data) {
+                globalData = d1.data;
+                renderTable();
+                
+                const states = [...new Set(globalData.map(i => i.state))].sort();
+                const selects = ['ai-state-select', 'twin-state'];
+                selects.forEach(selId => {
+                    const sel = document.getElementById(selId);
+                    if(sel && sel.options.length <= 1) {
+                        sel.innerHTML = '';
+                        states.forEach(s => sel.add(new Option(s, s)));
+                    }
+                });
+                
+                if(d2.analytics && Object.keys(d2.analytics).length > 0) {
+                    const a = d2.analytics;
+                    document.getElementById('kpi-container').innerHTML = 
+                        buildKPICard('Temperature', 'ph-thermometer-hot', 'var(--danger)', a.hottest) +
+                        buildKPICard('Rainfall', 'ph-drop', 'var(--accent)', a.wettest) +
+                        buildKPICard('Humidity', 'ph-cloud-fog', 'var(--success)', a.most_humid) +
+                        buildKPICard('Wind', 'ph-wind', 'var(--text-primary)', a.windiest);
+                    setTimeout(() => {
+                        if(a.hottest) drawSparkline('Temperature', a.hottest.sparkline, 'red');
+                        if(a.wettest) drawSparkline('Rainfall', a.wettest.sparkline, '#0070F3');
+                        if(a.most_humid) drawSparkline('Humidity', a.most_humid.sparkline, '#32D74B');
+                        if(a.windiest) drawSparkline('Wind', a.windiest.sparkline, 'white');
+                    }, 100);
+                }
+            }
+        } catch(e) {
+            console.error('System API Error:', e);
+            toast('Failed to fetch system data', 'error', fetchSystem);
+        }
+
+        // FIX 12 — Fetch live system health
+        try {
+            const hr = await fetchWithTimeout(`${API}/api/system/health`);
+            const health = await hr.json();
+            updateSystemDiagnostics(health);
+        } catch(e) { /* silent — status will show as checking */ }
+
+        setTimeout(fetchSystem, 30000);
+    };
+
+    // FIX 12 — Dynamic system diagnostics
+    const updateSystemDiagnostics = (health) => {
+        const setStatus = (id, status, label) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const dotClass = status === 'ok' ? 'green' : status === 'warn' ? 'yellow' : status === 'error' ? 'red' : 'gray';
+            el.innerHTML = `<span class="status-dot ${dotClass}"></span> ${label}`;
+        };
+        if (health.database) setStatus('sys-db', health.database.status === 'connected' ? 'ok' : 'error', health.database.status === 'connected' ? `Connected (${health.database.record_count || 0} records)` : 'Disconnected');
+        if (health.openmeteo) setStatus('sys-openmeteo', health.openmeteo.status === 'synced' ? 'ok' : 'warn', health.openmeteo.status === 'synced' ? `Synced` : 'Pending Sync');
+        if (health.risk_engine) setStatus('sys-risk', health.risk_engine.status === 'active' ? 'ok' : 'warn', health.risk_engine.status === 'active' ? `Active (${health.risk_engine.assessments} states)` : 'Idle');
+        if (health.ai_models) setStatus('sys-ai', health.ai_models.status === 'trained' ? 'ok' : 'warn', health.ai_models.status === 'trained' ? `Trained (${health.ai_models.model_count} models)` : 'Untrained');
+        if (health.api) setStatus('sys-api', 'ok', 'Operational');
+        // Update topbar status
+        const allOk = health.database?.status === 'connected';
+        const topbar = document.getElementById('topbar-status');
+        if (topbar) {
+            topbar.style.color = allOk ? 'var(--success)' : 'var(--warning)';
+            topbar.innerHTML = `<div class="dot pulse" style="color:${allOk ? 'var(--success)' : 'var(--warning)'}"></div> ${allOk ? 'Systems Online' : 'Degraded'}`;
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  TABLE LOGIC (FIX 11 — DocumentFragment)
+    // ═══════════════════════════════════════════════════════════════
+    let currentPage = 1;
+    const itemsPerPage = 20;
+    let sortCol = 'date', sortAsc = false;
+    
+    const sortTable = (col) => {
+        if(sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+        renderTable();
+    };
+
+    const changePage = (delta) => { currentPage += delta; if(currentPage < 1) currentPage = 1; renderTable(); };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SEARCH (FIX 7 — Keyboard nav, click-outside, ranking)
+    // ═══════════════════════════════════════════════════════════════
+    let searchKbIndex = -1;
+
+    const searchInput = document.getElementById('global-search');
+    const searchSugg = document.getElementById('search-suggestions');
+
+    const updateSearchSuggestions = (q) => {
+        if(q.length < 2) { searchSugg.style.display = 'none'; searchKbIndex = -1; return; }
+        const allNames = [...new Set(globalData.map(i => i.state))];
+        // FIX 7 — Better ranking: exact > startsWith > includes
+        const exact = allNames.filter(s => s.toLowerCase() === q);
+        const starts = allNames.filter(s => s.toLowerCase().startsWith(q) && !exact.includes(s));
+        const includes = allNames.filter(s => s.toLowerCase().includes(q) && !exact.includes(s) && !starts.includes(s));
+        const matches = [...exact, ...starts, ...includes];
+        
+        if(matches.length > 0) {
+            searchSugg.innerHTML = matches.map((m, i) => `<div class="search-item" data-idx="${i}" onmousedown="selectSearchItem('${m.replace(/'/g,"\\'")}');">${m}</div>`).join('');
+            searchSugg.style.display = 'flex';
+            searchKbIndex = -1;
+        } else { searchSugg.style.display = 'none'; searchKbIndex = -1; }
+    };
+
+    const selectSearchItem = (val) => {
+        searchInput.value = val;
+        searchSugg.style.display = 'none';
+        searchKbIndex = -1;
+        currentPage = 1;
+        renderTable();
+    };
+
+    // FIX 7 — Debounced search input
+    searchInput.addEventListener('input', debounce((e) => {
+        currentPage = 1;
+        renderTable();
+        updateSearchSuggestions(e.target.value.toLowerCase());
+    }, 300));
+
+    // FIX 7 — Keyboard navigation
+    searchInput.addEventListener('keydown', (e) => {
+        const items = searchSugg.querySelectorAll('.search-item');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            searchKbIndex = Math.min(searchKbIndex + 1, items.length - 1);
+            items.forEach((it, i) => it.classList.toggle('kb-active', i === searchKbIndex));
+            items[searchKbIndex]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            searchKbIndex = Math.max(searchKbIndex - 1, 0);
+            items.forEach((it, i) => it.classList.toggle('kb-active', i === searchKbIndex));
+            items[searchKbIndex]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && searchKbIndex >= 0) {
+            e.preventDefault();
+            const text = items[searchKbIndex]?.textContent;
+            if (text) selectSearchItem(text);
+        } else if (e.key === 'Escape') {
+            searchSugg.style.display = 'none';
+            searchKbIndex = -1;
+        }
+    });
+
+    // FIX 7 — Click outside closes dropdown
+    document.addEventListener('click', (e) => {
+        if (!document.getElementById('search-box').contains(e.target)) {
+            searchSugg.style.display = 'none';
+            searchKbIndex = -1;
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  TABLE RENDERING (FIX 11 — DocumentFragment)
+    // ═══════════════════════════════════════════════════════════════
+    const renderTable = () => {
+        const query = (searchInput.value || '').toLowerCase();
+        let filtered = globalData;
+        if(query) filtered = globalData.filter(i => i.state.toLowerCase().includes(query) || i.district.toLowerCase().includes(query));
+        
+        filtered.sort((a,b) => {
+            let v1 = a[sortCol], v2 = b[sortCol];
+            if(sortCol === 'date') { v1 = new Date(v1).getTime(); v2 = new Date(v2).getTime(); }
+            if(v1 < v2) return sortAsc ? -1 : 1;
+            if(v1 > v2) return sortAsc ? 1 : -1;
+            return 0;
+        });
+        
+        document.getElementById('table-count').innerText = filtered.length;
+        document.getElementById('page-num').innerText = currentPage;
+        
+        const tbody = document.getElementById('table-body');
+        const fragment = document.createDocumentFragment();
+        
+        const start = (currentPage - 1) * itemsPerPage;
+        filtered.slice(start, start + itemsPerPage).forEach(i => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="number-font">${i.date ? i.date.split(' ')[0] : (i.record_date ? i.record_date.split('T')[0] : 'Today')}</td>
+                <td style="font-weight:500;">${i.state}</td><td style="color:var(--text-secondary);">${i.district}</td>
+                <td class="number-font">${i.temperature}</td><td class="number-font">${i.rainfall}</td>
+                <td class="number-font">${i.humidity}</td><td class="number-font">${i.wind_speed}</td>`;
+            fragment.appendChild(tr);
+        });
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
+    };
+
+    const exportCSV = () => {
+        let csv = "Date,State,District,Temperature,Rainfall,Humidity,Wind\n";
+        globalData.forEach(i => csv += `${i.date||i.record_date||'N/A'},${i.state},${i.district},${i.temperature},${i.rainfall},${i.humidity},${i.wind_speed}\n`);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a'); a.href = window.URL.createObjectURL(blob); a.download = 'climate_data_export.csv'; a.click();
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  BUTTON LOADING STATES (FIX 6)
+    // ═══════════════════════════════════════════════════════════════
+    const setLoading = (btnId, loading) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        if (loading) { btn.classList.add('loading'); btn.disabled = true; }
+        else { btn.classList.remove('loading'); btn.disabled = false; }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  QUICK ACTIONS (FIX 6 — Loading + Error handling)
+    // ═══════════════════════════════════════════════════════════════
+    const syncData = async () => { 
+        toast("Syncing Open-Meteo Telemetry...");
+        try { await fetchWithTimeout(`${API}/api/update`, {method:'POST'}, 120000); toast("Pipeline Synced Successfully!", 'success'); fetchSystem(); } 
+        catch(e) { toast("Sync Failed — Check connection", 'error', syncData); } 
+    };
+    const trainModels = async () => { 
+        setLoading('btn-train', true);
+        toast("Initializing XGBoost Training...");
+        try {
+            await fetchWithTimeout(`${API}/api/train`, {method:'POST'}, 60000);
+            document.getElementById('sys-ai').innerHTML='<span class="status-dot green"></span> Trained';
+            toast("Models Trained Successfully!", 'success');
+        } catch(e) { toast("Training Failed", 'error', trainModels); }
+        finally { setLoading('btn-train', false); }
+    };
+    const generatePredictions = async () => {
+        setLoading('btn-predict', true);
+        setLoading('btn-predict-ai', true);
+        const overlay = document.getElementById('ai-loading-overlay');
+        if(overlay) overlay.classList.add('active');
+        const containers = [document.getElementById('chart-forecast-compare')?.parentElement, document.getElementById('chart-prediction-timeline')?.parentElement].filter(Boolean);
+        containers.forEach(c => c.classList.add('skeleton'));
+        
+        toast("Running ML Pipeline...");
+        try {
+            toast("Training models... (might take 10s)");
+            await fetchWithTimeout(`${API}/api/train`, {method:'POST'}, 60000);
+            
+            await fetchWithTimeout(`${API}/api/predict`, {method:'POST'}, 30000);
+            const r = await fetchWithTimeout(`${API}/api/predictions`); const d = await r.json();
+            const state = document.getElementById('ai-state-select').value;
+            const preds = d.predictions.filter(p => p.state === state);
+            
+            if(preds.length > 0) {
+                const conf = parseFloat(preds[0].confidence);
+                document.getElementById('ai-conf').innerText = conf.toFixed(1)+'%';
+                document.getElementById('ai-acc').innerText = (conf * 0.95).toFixed(1)+'%';
+                document.getElementById('ai-stab').innerText = conf > 80 ? 'High' : (conf > 60 ? 'Medium' : 'Low');
+                
+                const tbody = document.getElementById('forecast-history-body');
+                tbody.innerHTML = preds.map(p => `<tr><td>${p.forecast_date.split('T')[0]}</td><td>${p.period.replace('_', ' ')}</td><td>${p.temperature}</td><td>${p.rainfall}</td><td>${p.humidity}</td><td>${p.wind_speed}</td><td><span class="status-badge" style="background:${p.alert_level==='RED'?'rgba(255,59,48,0.2)':(p.alert_level==='YELLOW'?'rgba(255,149,0,0.2)':'rgba(52,199,89,0.2)')}; color:${p.alert_level==='RED'?'var(--danger)':(p.alert_level==='YELLOW'?'var(--warning)':'var(--success)')}">${p.alert_level}</span></td></tr>`).join('');
+                
+                // FIX 8 — Safe chart destroy
+                safeDestroyChart('aiComp');
+                charts.aiComp = new Chart(document.getElementById('chart-forecast-compare').getContext('2d'), {
+                    type: 'bar',
+                    data: { labels: preds.map(p=>p.period.replace('_', ' ')), datasets: [
+                        { label: 'Temp (°C)', data: preds.map(p=>p.temperature), backgroundColor: '#FF453A', borderRadius: 4 },
+                        { label: 'Rain (mm)', data: preds.map(p=>p.rainfall), backgroundColor: '#0070F3', borderRadius: 4 }
+                    ]},
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels:{color:'#A1A1AA'} } }, scales: {x:{ticks:{color:'#A1A1AA'}},y:{ticks:{color:'#A1A1AA'}}} }
+                });
+                
+                safeDestroyChart('aiTime');
+                charts.aiTime = new Chart(document.getElementById('chart-prediction-timeline').getContext('2d'), {
+                    type: 'line',
+                    data: { labels: preds.map(p=>p.forecast_date.split('T')[0]), datasets: [
+                        { label: 'Risk Score', data: preds.map(p=>p.risk_score), borderColor: '#FF9F0A', backgroundColor: 'rgba(255,159,10,0.2)', fill: true, tension: 0.4 }
+                    ]},
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display:false } }, scales: {x:{ticks:{color:'#A1A1AA'}},y:{ticks:{color:'#A1A1AA'}}} }
+                });
+            }
+            toast("Predictions Ready", 'success');
+        } catch(e) { toast("Prediction Error — Try again", 'error', generatePredictions); }
+        finally { 
+            setLoading('btn-predict', false);
+            setLoading('btn-predict-ai', false);
+            if(overlay) overlay.classList.remove('active');
+            containers.forEach(c => c.classList.remove('skeleton'));
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  CHART ENGINE (FIX 8 — Safe destroy + theme compat)
+    // ═══════════════════════════════════════════════════════════════
+    const initChart = (id, label, color) => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return null;
+        const ctx = canvas.getContext('2d');
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+        const textColor = isDark ? '#A1A1AA' : '#64748B';
+        
+        return new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color+'22', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }] },
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, backgroundColor: isDark?'rgba(0,0,0,0.8)':'rgba(255,255,255,0.9)', titleColor: isDark?'#fff':'#000', bodyColor: isDark?'#fff':'#000', borderColor: gridColor, borderWidth: 1 } }, 
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                scales: { 
+                    x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, maxTicksLimit: 8 } }, 
+                    y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor } } 
+                },
+                animation: { duration: 600 }
+            }
+        });
+    };
+    
+    const setActiveTimeBtn = (btn) => {
+        if (!btn) return;
+        const parent = btn.parentElement;
+        const thumb = parent.querySelector('.time-slider-thumb');
+        const btns = parent.querySelectorAll('.time-btn');
+        btns.forEach(b => {
+            b.classList.remove('active');
+            b.style.fontWeight = '500';
+            b.style.color = 'var(--text-secondary)';
+        });
+        btn.classList.add('active');
+        btn.style.fontWeight = '600';
+        btn.style.color = 'var(--text-primary)';
+        
+        const parentRect = parent.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        const offsetLeft = btnRect.left - parentRect.left;
+        
+        if(thumb) {
+            thumb.style.width = `${btnRect.width}px`;
+            thumb.style.transform = `translateX(${offsetLeft}px)`;
+        }
+    };
+
+    const updateTrends = async (days, btn = null) => {
+        if (btn) setActiveTimeBtn(btn);
+        currentChartDays = days;
+        
+        const tempCard = document.getElementById('chart-temp')?.parentElement;
+        const rainCard = document.getElementById('chart-rain')?.parentElement;
+        if (tempCard) tempCard.classList.add('skeleton');
+        if (rainCard) rainCard.classList.add('skeleton');
+        
+        safeDestroyCharts('temp', 'rain');
+        charts.temp = initChart('chart-temp', 'Temperature', '#FF453A');
+        charts.rain = initChart('chart-rain', 'Rainfall', '#0070F3');
+        
+        try {
+            const r = await fetchWithTimeout(`${API}/api/trends?days=${days}`);
+            const d = await r.json();
+            if(d.trends && d.trends.length > 0) {
+                const labels = d.trends.map(t => t.date.split('T')[0]);
+                if(charts.temp) { charts.temp.data.labels = labels; charts.temp.data.datasets[0].data = d.trends.map(t=>t.temperature); charts.temp.update(); }
+                if(charts.rain) { charts.rain.data.labels = labels; charts.rain.data.datasets[0].data = d.trends.map(t=>t.rainfall); charts.rain.update(); }
+            }
+            
+            const statesLatest = [...new Map(globalData.map(item => [item.state, item])).values()];
+            const initBarChart = (id, label, color, dataArr, dataKey) => {
+                safeDestroyChart(id);
+                const canvas = document.getElementById(id);
+                if(!canvas) return;
+                charts[id] = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: { labels: dataArr.map(d=>d.state.substring(0,10)), datasets: [{ label, data: dataArr.map(d=>d[dataKey]), backgroundColor: color, borderRadius: 4 }] },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: {display: false} }, scales: { x: { ticks:{color:'#A1A1AA'} }, y: { ticks:{color:'#A1A1AA'} } }, animation: { duration: 600 } }
+                });
+            };
+            
+            initBarChart('chart-top-hottest', 'Temp', '#FF453A', [...statesLatest].sort((a,b)=>b.temperature - a.temperature).slice(0,10), 'temperature');
+            initBarChart('chart-top-wettest', 'Rain', '#0070F3', [...statesLatest].sort((a,b)=>b.rainfall - a.rainfall).slice(0,10), 'rainfall');
+            initBarChart('chart-top-humid', 'Humid', '#32D74B', [...statesLatest].sort((a,b)=>b.humidity - a.humidity).slice(0,10), 'humidity');
+            initBarChart('chart-top-windiest', 'Wind', '#FF9F0A', [...statesLatest].sort((a,b)=>b.wind_speed - a.wind_speed).slice(0,10), 'wind_speed');
+            
+            const s1 = document.getElementById('comp-state-1');
+            if(s1.options.length === 1 && statesLatest.length > 0) {
+                s1.innerHTML = ''; document.getElementById('comp-state-2').innerHTML = '';
+                statesLatest.forEach(s => { s1.add(new Option(s.state, s.state)); document.getElementById('comp-state-2').add(new Option(s.state, s.state)); });
+                if(statesLatest.length > 1) document.getElementById('comp-state-2').selectedIndex = 1;
+                updateComparisonChart();
+            }
+        } catch(e) { 
+            toast("Failed to load trends", 'error', () => updateTrends(days)); 
+        } finally {
+            const tempCard = document.getElementById('chart-temp')?.parentElement;
+            const rainCard = document.getElementById('chart-rain')?.parentElement;
+            if (tempCard) tempCard.classList.remove('skeleton');
+            if (rainCard) rainCard.classList.remove('skeleton');
+        }
+    };
+    
+    const updateComparisonChart = () => {
+        const s1 = document.getElementById('comp-state-1').value;
+        const s2 = document.getElementById('comp-state-2').value;
+        const d1 = globalData.find(i=>i.state===s1);
+        const d2 = globalData.find(i=>i.state===s2);
+        if(!d1 || !d2) return;
+        
+        safeDestroyChart('comp');
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        charts.comp = new Chart(document.getElementById('chart-state-compare').getContext('2d'), {
+            type: 'radar',
+            data: {
+                labels: ['Temperature (°C)', 'Rainfall (mm/10)', 'Humidity (%)', 'Wind (km/h)'],
+                datasets: [
+                    { label: s1, data: [d1.temperature, Math.min(100, d1.rainfall/2), d1.humidity, d1.wind_speed], borderColor: '#0070F3', backgroundColor: 'rgba(0,112,243,0.2)', borderWidth: 2 },
+                    { label: s2, data: [d2.temperature, Math.min(100, d2.rainfall/2), d2.humidity, d2.wind_speed], borderColor: '#FF453A', backgroundColor: 'rgba(255,69,58,0.2)', borderWidth: 2 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: isDark?'rgba(255,255,255,0.1)':'rgba(0,0,0,0.1)' }, grid: { color: isDark?'rgba(255,255,255,0.1)':'rgba(0,0,0,0.1)' }, pointLabels: { color: isDark?'#fff':'#000', font: {size: 13} }, ticks: { display: false } } }, plugins: { legend: { labels: { color: isDark?'#fff':'#000' } } }, animation: { duration: 600 } }
+        });
+    };
+    
+    const updateRiskTrend = (type) => {
+        document.querySelectorAll('[id^=btn-rt-]').forEach(b => { b.style.background = 'transparent'; });
+        document.getElementById('btn-rt-'+type).style.background = 'var(--bg-sidebar)';
+        
+        safeDestroyChart('riskTrend');
+        
+        const state = document.getElementById('twin-state').value;
+        const riskData = globalRisk.find(i=>i.state_name===state);
+        const baseVal = riskData ? parseFloat(riskData[type+'_risk']) : 50;
+        
+        const labels = Array.from({length: 12}, (_, i) => `Month -${12-i}`);
+        const data = labels.map((_, i) => Math.max(0, Math.min(100, baseVal + (Math.sin(i)*15) + (i*1.5) - 5)));
+        const color = type==='flood'?'#0070F3':type==='heatwave'?'#FF453A':'#FF9F0A';
+        
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        charts.riskTrend = new Chart(document.getElementById('chart-risk-trend').getContext('2d'), {
+            type: 'line',
+            data: { labels, datasets: [{ label: type.toUpperCase() + ' Risk', data, borderColor: color, fill: true, backgroundColor: color+'33', tension: 0.4 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: isDark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)' }, ticks: { color: isDark?'#A1A1AA':'#64748B' } }, y: { min: 0, max: 100, grid: { color: isDark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)' }, ticks: { color: isDark?'#A1A1AA':'#64748B' } } }, animation: { duration: 600 } }
+        });
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  DIGITAL TWIN ENGINE
+    // ═══════════════════════════════════════════════════════════════
+    const st = document.getElementById('sim-t'), sr = document.getElementById('sim-r'), sh = document.getElementById('sim-h');
+    st.oninput = () => document.getElementById('val-t').innerText = (st.value>0?'+':'') + st.value + ' °C';
+    sr.oninput = () => document.getElementById('val-r').innerText = (sr.value>0?'+':'') + sr.value + ' mm';
+    sh.oninput = () => document.getElementById('val-h').innerText = (sh.value>0?'+':'') + sh.value + ' %';
+    
+    const runSimulation = async () => {
+        const state = document.getElementById('twin-state').value;
+        try {
+            await fetchWithTimeout(`${API}/api/scenario`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ scenario_name: 'Custom', state_name: state, temperature_delta: st.value, rainfall_delta: sr.value, humidity_delta: sh.value }) });
+            const r = await fetchWithTimeout(`${API}/api/simulate`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ scenario_name: 'Custom', state_name: state }) });
+            const d = await r.json();
+            if(d.status === 'success') {
+                document.getElementById('risk-val-f').innerText = d.risks.flood.toFixed(0)+'%'; document.getElementById('risk-bar-f').style.width = d.risks.flood+'%';
+                document.getElementById('risk-val-h').innerText = d.risks.heatwave.toFixed(0)+'%'; document.getElementById('risk-bar-h').style.width = d.risks.heatwave+'%';
+                document.getElementById('risk-val-d').innerText = d.risks.drought.toFixed(0)+'%'; document.getElementById('risk-bar-d').style.width = d.risks.drought+'%';
+                if(currentLayer !== 'climate') renderHeatmap(d.risks.flood, d.risks.heatwave, d.risks.drought);
+            }
+        } catch(e) { toast("Simulation Engine Failure", 'error', runSimulation); }
+    };
+
+    // Time Machine
+    const ts = document.getElementById('time-slider'), bp = document.getElementById('btn-play');
+    let playInterval;
+    ts.oninput = () => document.getElementById('twin-year').innerText = ts.value;
+    bp.onclick = () => {
+        if(playInterval) { clearInterval(playInterval); playInterval=null; bp.innerHTML='<i class="ph ph-play"></i> Play'; return; }
+        bp.innerHTML='<i class="ph ph-pause"></i> Pause';
+        playInterval = setInterval(() => {
+            let v = parseInt(ts.value) + 1; if(v > 2035) v = 2020;
+            ts.value = v; document.getElementById('twin-year').innerText = v;
+            st.value = ((v-2020)/2).toFixed(1); st.oninput();
+            runSimulation();
+        }, 1200);
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  ALERT CENTER (FIX 10)
+    // ═══════════════════════════════════════════════════════════════
+    const refreshAlerts = async () => {
+        try {
+            const r = await fetchWithTimeout(`${API}/api/alerts`);
+            const d = await r.json();
+            globalAlerts = d.alerts || [];
+            
+            // Update badge
+            const badge = document.getElementById('alert-badge');
+            const criticalCount = globalAlerts.filter(a => a.severity === 'CRITICAL' || a.severity === 'WARNING').length;
+            if (criticalCount > 0) { badge.style.display = 'inline'; badge.textContent = criticalCount; }
+            else { badge.style.display = 'none'; }
+            
+            // Update summary counts
+            document.getElementById('alert-heat-count').textContent = globalAlerts.filter(a => a.type === 'heatwave').length;
+            document.getElementById('alert-flood-count').textContent = globalAlerts.filter(a => a.type === 'flood' || a.type === 'heavy_rain').length;
+            document.getElementById('alert-drought-count').textContent = globalAlerts.filter(a => a.type === 'drought').length;
+            document.getElementById('alert-wind-count').textContent = globalAlerts.filter(a => a.type === 'wind').length;
+            document.getElementById('alert-count-badge').innerHTML = `<div class="dot" style="color:${criticalCount > 0 ? 'var(--danger)' : 'var(--success)'}"></div> ${globalAlerts.length} Active`;
+            
+            renderAlerts();
+        } catch(e) {
+            toast("Failed to fetch alerts", 'error', refreshAlerts);
+        }
+    };
+
+    const filterAlerts = (type) => {
+        currentAlertFilter = type;
+        document.querySelectorAll('[id^=filter-]').forEach(b => b.style.background = 'transparent');
+        document.getElementById('filter-' + type).style.background = 'var(--bg-sidebar)';
+        renderAlerts();
+    };
+
+    const renderAlerts = () => {
+        const list = document.getElementById('alert-list');
+        let filtered = currentAlertFilter === 'all' ? globalAlerts : globalAlerts.filter(a => a.type === currentAlertFilter || (currentAlertFilter === 'flood' && a.type === 'heavy_rain'));
+        
+        if (filtered.length === 0) {
+            list.innerHTML = '<div class="empty-state"><i class="ph ph-shield-check"></i><h3>No Active Alerts</h3><p>All systems are operating within normal parameters for this category.</p></div>';
+            return;
+        }
+        
+        const iconMap = { 'sun': 'ph-sun', 'waves': 'ph-waves', 'plant': 'ph-plant', 'wind': 'ph-wind', 'cloud-rain': 'ph-cloud-rain' };
+        const colorMap = { 'heatwave': 'var(--danger)', 'flood': 'var(--accent)', 'heavy_rain': 'var(--accent)', 'drought': 'var(--warning)', 'wind': 'var(--text-secondary)' };
+        
+        list.innerHTML = filtered.map(a => `
+            <div class="alert-card">
+                <div class="alert-header">
+                    <div class="alert-title">
+                        <i class="ph-fill ${iconMap[a.icon] || 'ph-warning'}" style="color:${colorMap[a.type] || 'var(--text-secondary)'}"></i>
+                        ${a.message}
+                    </div>
+                    <span class="alert-severity ${a.severity}">${a.severity}</span>
+                </div>
+                <div class="alert-body">${a.recommendation || ''}</div>
+                <div class="alert-meta">
+                    <span><i class="ph ph-map-pin"></i> ${a.state}${a.district ? ' — ' + a.district : ''}</span>
+                    <span><i class="ph ph-clock"></i> ${a.date ? a.date.split('T')[0] : 'Now'}</span>
+                </div>
+            </div>
+        `).join('');
+    };
+
+    // Auto-refresh alerts every 60s
+    setInterval(refreshAlerts, 60000);
+
+    // ═══════════════════════════════════════════════════════════════
+    //  PDF EXPORT (FIX 9)
+    // ═══════════════════════════════════════════════════════════════
+    const exportPDF = () => {
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageW = doc.internal.pageSize.getWidth();
+            let y = 20;
+
+            // Header
+            doc.setFillColor(0, 112, 243);
+            doc.rect(0, 0, pageW, 40, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Climate Twin India', 20, 18);
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Climate Intelligence Report — ' + new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' }), 20, 28);
+            doc.text('Generated: ' + new Date().toLocaleTimeString('en-IN'), 20, 35);
+            y = 50;
+
+            // Climate Summary
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Climate Summary', 20, y); y += 10;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+
+            if (globalData.length > 0) {
+                const avg = (key) => (globalData.reduce((s, i) => s + parseFloat(i[key] || 0), 0) / globalData.length).toFixed(1);
+                const summaryData = [
+                    ['Metric', 'National Average', 'Data Points'],
+                    ['Temperature', avg('temperature') + ' °C', globalData.length + ' stations'],
+                    ['Rainfall', avg('rainfall') + ' mm', globalData.length + ' stations'],
+                    ['Humidity', avg('humidity') + ' %', globalData.length + ' stations'],
+                    ['Wind Speed', avg('wind_speed') + ' km/h', globalData.length + ' stations']
+                ];
+                doc.autoTable({ startY: y, head: [summaryData[0]], body: summaryData.slice(1), theme: 'grid', headStyles: { fillColor: [0, 112, 243] }, margin: { left: 20, right: 20 } });
+                y = doc.lastAutoTable.finalY + 15;
+            }
+
+            // State Data Table
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('State Climate Data', 20, y); y += 10;
+
+            if (globalData.length > 0) {
+                const stateRows = [...new Map(globalData.map(i => [i.state, i])).values()].map(i => [i.state, i.district, i.temperature, i.rainfall, i.humidity, i.wind_speed]);
+                doc.autoTable({ startY: y, head: [['State', 'District', 'Temp °C', 'Rain mm', 'Humid %', 'Wind km/h']], body: stateRows, theme: 'striped', headStyles: { fillColor: [0, 112, 243] }, margin: { left: 20, right: 20 }, styles: { fontSize: 8 } });
+                y = doc.lastAutoTable.finalY + 15;
+            }
+
+            // Risk Assessment
+            if (globalRisk.length > 0) {
+                if (y > 240) { doc.addPage(); y = 20; }
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Risk Assessment', 20, y); y += 10;
+                const riskRows = globalRisk.map(r => [r.state_name, r.scenario_name || 'Default', parseFloat(r.flood_risk || 0).toFixed(1) + '%', parseFloat(r.heatwave_risk || 0).toFixed(1) + '%', parseFloat(r.drought_risk || 0).toFixed(1) + '%']);
+                doc.autoTable({ startY: y, head: [['State', 'Scenario', 'Flood Risk', 'Heatwave Risk', 'Drought Risk']], body: riskRows, theme: 'striped', headStyles: { fillColor: [255, 69, 58] }, margin: { left: 20, right: 20 }, styles: { fontSize: 8 } });
+                y = doc.lastAutoTable.finalY + 15;
+            }
+
+            // Alerts
+            if (globalAlerts.length > 0) {
+                if (y > 240) { doc.addPage(); y = 20; }
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Active Disaster Alerts', 20, y); y += 10;
+                const alertRows = globalAlerts.slice(0, 20).map(a => [a.severity, a.type.toUpperCase(), a.state, a.message]);
+                doc.autoTable({ startY: y, head: [['Severity', 'Type', 'State', 'Message']], body: alertRows, theme: 'striped', headStyles: { fillColor: [255, 149, 10] }, margin: { left: 20, right: 20 }, styles: { fontSize: 8 } });
+            }
+
+            // Footer
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.text(`Climate Twin India — Page ${i} of ${pageCount}`, pageW / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+            }
+
+            doc.save('ClimateTwin_India_Report.pdf');
+            toast('PDF Report exported successfully!', 'success');
+        } catch(e) {
+            console.error('PDF export error:', e);
+            toast('PDF export failed — please try again', 'error', exportPDF);
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  MAP ENGINE (FIX 4 + FIX 5 — Enhanced GeoJSON + Layers)
+    // ═══════════════════════════════════════════════════════════════
+    let map, geojsonLayer, heatLayer = null, markers = [], currentLayer = 'climate';
+
+    // FIX 4 — GeoJSON name normalization map
+    const STATE_NAME_MAP = {
+        'NCT of Delhi': 'Delhi',
+        'Andaman and Nicobar Islands': 'Andaman and Nicobar',
+        'Dadra and Nagar Haveli': 'Dadra and Nagar Haveli and Daman and Diu',
+        'Daman and Diu': 'Dadra and Nagar Haveli and Daman and Diu',
+        'Jammu & Kashmir': 'Jammu and Kashmir',
+        'Orissa': 'Odisha',
+        'Pondicherry': 'Puducherry',
+        'Uttaranchal': 'Uttarakhand',
+        'Chattisgarh': 'Chhattisgarh'
+    };
+    const normalizeStateName = (name) => STATE_NAME_MAP[name] || name;
+
+    const GEOJSON_URLS = [
+        'https://raw.githubusercontent.com/Subhash9325/GeoJson-Data-of-Indian-States/master/Indian_States',
+        'https://raw.githubusercontent.com/geohacker/india/master/state/india_state.geojson'
+    ];
+
+    const openMap = async () => {
+        document.getElementById('map-modal').style.display = 'block';
+        if(!map) {
+            map = L.map('leaflet-map', { maxBounds: [[6.5, 68], [35.5, 97]], maxBoundsViscosity: 1.0, minZoom: 4, zoomControl: false }).setView([22, 80], 4.5);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            L.tileLayer(isDark 
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
+                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+            ).addTo(map);
+
+            // FIX 4 — Load GeoJSON with fallback
+            let geojsonData = null;
+            for (const url of GEOJSON_URLS) {
+                try {
+                    const res = await fetchWithTimeout(url, {}, 10000);
+                    if (res.ok) { geojsonData = await res.json(); break; }
+                } catch(e) { console.warn(`GeoJSON source failed: ${url}`, e); }
+            }
+
+            if (geojsonData) {
+                geojsonLayer = L.geoJSON(geojsonData, {
+                    style: { color: 'rgba(255,255,255,0.2)', weight: 1.5, fillOpacity: 0.08, fillColor: '#0070F3' },
+                    onEachFeature: (feature, layer) => { 
+                        const rawName = feature.properties.NAME_1 || feature.properties.name || feature.properties.ST_NM || '';
+                        const stateName = normalizeStateName(rawName);
+
+                        // FIX 4 — State hover with smooth highlight
+                        layer.on({ 
+                            mouseover: e => {
+                                e.target.setStyle({ fillOpacity: 0.4, color: '#fff', weight: 2.5 });
+                                layer.openPopup();
+                                // FIX 4 — Update sidebar info
+                                const info = document.getElementById('map-state-info');
+                                const sdata = globalData.filter(i => i.state === stateName);
+                                if (sdata.length > 0) {
+                                    info.style.display = 'block';
+                                    document.getElementById('ms-title').textContent = stateName;
+                                    document.getElementById('ms-t').textContent = (sdata.reduce((a,b) => a + parseFloat(b.temperature), 0) / sdata.length).toFixed(1) + '°C';
+                                    document.getElementById('ms-r').textContent = (sdata.reduce((a,b) => a + parseFloat(b.rainfall), 0) / sdata.length).toFixed(1) + 'mm';
+                                }
+                            }, 
+                            mouseout: e => { geojsonLayer.resetStyle(e.target); layer.closePopup(); },
+                            click: e => { 
+                                map.fitBounds(e.target.getBounds(), { padding: [40, 40] });
+                                // FIX 4 — Set twin state selector
+                                const sel = document.getElementById('twin-state');
+                                for (let i = 0; i < sel.options.length; i++) {
+                                    if (sel.options[i].value === stateName) { sel.selectedIndex = i; break; }
+                                }
+                            }
+                        }); 
+                        
+                        // Build popup content
+                        let avgT = "-", avgR = "-", avgH = "-", avgW = "-";
+                        const sdata = globalData.filter(i=>i.state===stateName);
+                        if(sdata.length>0) {
+                            avgT = (sdata.reduce((a,b)=>a+parseFloat(b.temperature),0)/sdata.length).toFixed(1);
+                            avgR = (sdata.reduce((a,b)=>a+parseFloat(b.rainfall),0)/sdata.length).toFixed(1);
+                            avgH = (sdata.reduce((a,b)=>a+parseFloat(b.humidity),0)/sdata.length).toFixed(1);
+                            avgW = (sdata.reduce((a,b)=>a+parseFloat(b.wind_speed),0)/sdata.length).toFixed(1);
+                        }
+                        
+                        let rF = "0", rH = "0", rD = "0";
+                        const riskData = globalRisk.filter(i=>i.state_name===stateName);
+                        if (riskData.length>0) {
+                            rF = parseFloat(riskData[0].flood_risk || 0).toFixed(1);
+                            rH = parseFloat(riskData[0].heatwave_risk || 0).toFixed(1);
+                            rD = parseFloat(riskData[0].drought_risk || 0).toFixed(1);
+                        }
+                        
+                        const popupContent = `
+                            <div style="background: rgba(10,10,15,0.9); backdrop-filter: blur(16px); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); color: #fff; min-width: 220px; font-family: 'Inter', sans-serif;">
+                                <h3 style="margin-bottom:12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; font-size:15px;">${stateName}</h3>
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+                                    <div style="color:#A1A1AA">Temp</div><div style="text-align:right">${avgT}°C</div>
+                                    <div style="color:#A1A1AA">Rain</div><div style="text-align:right">${avgR}mm</div>
+                                    <div style="color:#A1A1AA">Humid</div><div style="text-align:right">${avgH}%</div>
+                                    <div style="color:#A1A1AA">Wind</div><div style="text-align:right">${avgW}km/h</div>
+                                </div>
+                                <h4 style="margin: 12px 0 8px 0; font-size: 11px; color: #A1A1AA; text-transform: uppercase; letter-spacing: 0.5px;">Risk Profile</h4>
+                                <div style="display:flex; flex-direction:column; gap: 6px; font-size: 13px;">
+                                    <div style="display:flex; justify-content:space-between;"><span>Flood</span><span style="color:#0070F3">${rF}%</span></div>
+                                    <div style="display:flex; justify-content:space-between;"><span>Heatwave</span><span style="color:#FF453A">${rH}%</span></div>
+                                    <div style="display:flex; justify-content:space-between;"><span>Drought</span><span style="color:#FF9F0A">${rD}%</span></div>
+                                </div>
+                            </div>
+                        `;
+                        layer.bindPopup(popupContent, { closeButton: false, className: 'glass-popup', autoPan: false });
+                    }
+                }).addTo(map);
+            } else {
+                toast('Map boundaries could not be loaded', 'error');
+            }
+            setLayer('climate');
+        } else {
+            map.invalidateSize();
+        }
+    };
+    const closeMap = () => document.getElementById('map-modal').style.display = 'none';
+    
+    // FIX 5 — Layer switching with legend
+    const setLayer = (layerName) => {
+        currentLayer = layerName;
+        // Update active button
+        document.querySelectorAll('[id^=layer-btn-]').forEach(b => b.style.background = '');
+        const activeBtn = document.getElementById('layer-btn-' + layerName);
+        if (activeBtn) activeBtn.style.background = 'rgba(150,150,150,0.15)';
+        
+        // Update legend
+        const legend = document.getElementById('map-legend');
+        const legendBar = document.getElementById('legend-bar');
+        const legendTitle = document.getElementById('legend-title');
+        if (layerName === 'climate') {
+            legend.style.display = 'none';
+        } else {
+            legend.style.display = 'block';
+            const gradients = {
+                flood: { gradient: 'linear-gradient(to right, #007AFF, #34C759, #FFCC00, #FF9500, #FF3B30)', title: 'Flood Risk Intensity' },
+                heatwave: { gradient: 'linear-gradient(to right, #FF9500, #FF6B35, #FF453A, #CC2936, #8B0000)', title: 'Heatwave Severity' },
+                drought: { gradient: 'linear-gradient(to right, #007AFF, #34C759, #FFCC00, #D2691E, #8B4513)', title: 'Drought Severity' }
+            };
+            const g = gradients[layerName];
+            legendBar.style.background = g.gradient;
+            legendTitle.textContent = g.title;
+        }
+        renderHeatmap();
+    };
+
+    // FIX 5 — Enhanced color scales
+    const renderHeatmap = (f, h, d) => {
+        if(!map) return;
+        if(heatLayer) map.removeLayer(heatLayer);
+        markers.forEach(m => map.removeLayer(m)); markers = [];
+        let points = [];
+        
+        const getColor = (val) => {
+            if(val > 80) return '#FF3B30';
+            if(val > 60) return '#FF9500';
+            if(val > 40) return '#FFCC00';
+            if(val > 20) return '#34C759';
+            return '#007AFF';
+        };
+        
+        if (geojsonLayer) {
+            geojsonLayer.eachLayer(layer => {
+                const rawName = layer.feature.properties.NAME_1 || layer.feature.properties.name || layer.feature.properties.ST_NM || '';
+                const stateName = normalizeStateName(rawName);
+                if(currentLayer === 'climate') {
+                    layer.setStyle({ fillColor: '#0070F3', fillOpacity: 0.08 });
+                    return;
+                }
+                
+                let val = 0;
+                if (stateName === document.getElementById('twin-state').value && f !== undefined) {
+                    val = currentLayer === 'flood' ? f : currentLayer === 'heatwave' ? h : d;
+                } else {
+                    const riskData = globalRisk.find(i=>i.state_name===stateName);
+                    if(riskData) {
+                        val = currentLayer === 'flood' ? riskData.flood_risk : currentLayer === 'heatwave' ? riskData.heatwave_risk : riskData.drought_risk;
+                    }
+                }
+                // FIX 5 — Smooth transition
+                layer.setStyle({ fillColor: getColor(val), fillOpacity: Math.max(0.15, val / 150), weight: 1.5, color: 'rgba(255,255,255,0.2)' });
+            });
+        }
+        
+        if(currentLayer === 'climate') {
+            globalData.forEach(p => {
+                if(p.latitude) {
+                    const t = parseFloat(p.temperature);
+                    const markerColor = t > 40 ? '#FF3B30' : t > 35 ? '#FF9500' : t > 30 ? '#FFCC00' : t > 25 ? '#34C759' : '#007AFF';
+                    markers.push(L.circleMarker([p.latitude, p.longitude], {radius:7, fillColor:markerColor, color:'#fff', weight:2, fillOpacity:0.9})
+                        .bindPopup(`<div style="color:#000; font-family:'Inter'; padding:4px;"><b>${p.district} (${p.state})</b><br>Temp: ${p.temperature}°C<br>Rain: ${p.rainfall}mm<br>Humid: ${p.humidity}%<br>Wind: ${p.wind_speed}km/h</div>`)
+                        .addTo(map));
+                }
+            });
+        } else {
+            // FIX 5 — Proper gradient maps per layer
+            let grad = currentLayer === 'flood' ? {0.2:'#007AFF',0.5:'#34C759',0.8:'#FFCC00',1:'#FF3B30'} 
+                     : currentLayer === 'heatwave' ? {0.2:'#FF9500',0.5:'#FF6B35',0.8:'#FF453A',1:'#8B0000'} 
+                     : {0.2:'#FFCC00',0.5:'#D2691E',0.8:'#A0522D',1:'#8B4513'};
+            globalData.forEach(p => {
+                if(p.latitude) {
+                    let intensity = 0.2;
+                    if(p.state === document.getElementById('twin-state').value && f !== undefined) {
+                        intensity = (currentLayer==='flood'?f:currentLayer==='heatwave'?h:d)/100;
+                    } else {
+                        if (currentLayer === 'flood') intensity = Math.min(1, p.rainfall / 200);
+                        if (currentLayer === 'heatwave') intensity = Math.min(1, Math.max(0, (p.temperature - 35) / 10));
+                        if (currentLayer === 'drought') intensity = Math.min(1, Math.max(0, (p.temperature - 30)*0.05 + Math.max(0, 50 - p.rainfall)*0.01));
+                    }
+                    for(let i=0; i<3; i++) points.push([parseFloat(p.latitude)+(Math.random()-.5), parseFloat(p.longitude)+(Math.random()-.5), intensity]);
+                    points.push([parseFloat(p.latitude), parseFloat(p.longitude), intensity*1.5]);
+                }
+            });
+            heatLayer = L.heatLayer(points, {radius: 40, blur: 25, gradient: grad}).addTo(map);
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    //  INITIALIZATION
+    // ═══════════════════════════════════════════════════════════════
+    fetchSystem();
+    // Fetch initial alerts for badge
+    refreshAlerts();
+
+</script>
+</body>
+</html>

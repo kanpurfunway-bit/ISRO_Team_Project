@@ -432,7 +432,7 @@ def system_health():
 @app.route("/api/scenario", methods=["POST"])
 @limiter.limit("10 per minute")
 def save_scenario():
-    data = request.json
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "Request body is required"}), 400
     try:
@@ -455,7 +455,7 @@ def save_scenario():
 @app.route("/api/simulate", methods=["POST"])
 @limiter.limit("10 per minute")
 def simulate_scenario():
-    data = request.json
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "Request body is required"}), 400
     scenario_name = data.get('scenario_name', 'Default')
@@ -767,13 +767,17 @@ def bg_import_top20():
     for city in TOP_20_CITIES:
         logger.info(f"[HISTORICAL] IMPORT STARTED for {city['district_name']}")
         try:
+            api_key = os.environ.get("OPENMETEO_API_KEY")
+            base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
             url = (
-                "https://archive-api.open-meteo.com/v1/archive"
+                f"{base_url}"
                 f"?latitude={city['lat']}&longitude={city['lon']}"
                 "&start_date=2015-01-01&end_date=2025-12-31"
                 "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean"
                 "&timezone=Asia%2FKolkata"
             )
+            if api_key:
+                url += f"&apikey={api_key}"
             
             # Simple retry logic using a loop
             max_retries = 3
@@ -897,13 +901,17 @@ def bg_import_all_india():
             pass # ignore and proceed to fetch
             
         try:
+            api_key = os.environ.get("OPENMETEO_API_KEY")
+            base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
             url = (
-                "https://archive-api.open-meteo.com/v1/archive"
+                f"{base_url}"
                 f"?latitude={loc['lat']}&longitude={loc['lon']}"
                 "&start_date=2015-01-01&end_date=2025-12-31"
                 "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean"
                 "&timezone=Asia%2FKolkata"
             )
+            if api_key:
+                url += f"&apikey={api_key}"
             
             max_retries = 3
             for attempt in range(max_retries):
@@ -994,7 +1002,7 @@ def bg_import_all_india():
     _import_progress["is_running"] = False
     _import_progress["estimated_time_remaining"] = "0m 0s"
 
-@app.route("/api/historical/import-top20", methods=["POST"])
+@app.route("/api/historical/import-top20", methods=["GET", "POST"])
 @limiter.limit("3 per hour")
 def import_top20_historical():
     global _import_progress
@@ -1003,7 +1011,7 @@ def import_top20_historical():
     threading.Thread(target=bg_import_top20, daemon=True).start()
     return jsonify({"status": "success", "message": "Top 20 cities import started in background"})
 
-@app.route("/api/historical/import-all-india", methods=["POST"])
+@app.route("/api/historical/import-all-india", methods=["GET", "POST"])
 @limiter.limit("3 per hour")
 def import_all_india_historical():
     global _import_progress
@@ -1023,13 +1031,17 @@ def import_kanpur_historical():
     logger.info("[HISTORICAL] IMPORT STARTED for Kanpur")
     
     try:
+        api_key = os.environ.get("OPENMETEO_API_KEY")
+        base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
         url = (
-            "https://archive-api.open-meteo.com/v1/archive"
+            f"{base_url}"
             "?latitude=26.4499&longitude=80.3319"
             "&start_date=2015-01-01&end_date=2025-12-31"
             "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean"
             "&timezone=Asia%2FKolkata"
         )
+        if api_key:
+            url += f"&apikey={api_key}"
         
         response = requests.get(url, timeout=60)
         response.raise_for_status()
@@ -1414,7 +1426,7 @@ def get_train_status():
 @app.route("/api/predict", methods=["POST"])
 @limiter.limit("20 per minute")
 def generate_predictions():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     state = data.get("state", "Uttar Pradesh")
     days = data.get("days", 30)
 
@@ -1550,7 +1562,7 @@ def explain_ai():
 @app.route("/api/ai/chat", methods=["POST"])
 @limiter.limit("10 per minute")
 def chat_ai():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "")
     
     try:

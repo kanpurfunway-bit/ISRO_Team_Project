@@ -36,6 +36,8 @@ import requests_cache
 from retry_requests import retry
 
 from flask import Flask, jsonify, request, send_from_directory
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from psycopg2 import pool, OperationalError
 from psycopg2.extras import RealDictCursor, execute_values
 import requests
@@ -69,6 +71,28 @@ logger = logging.getLogger("ClimateTwin")
 # ═══════════════════════════════════════════════════════════════════
 
 app = Flask(__name__, static_folder=".", static_url_path="")
+
+# ═══════════════════════════════════════════════════════════════════
+#  RATE LIMITER CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["60 per minute"],
+    storage_uri="memory://",
+    strategy="fixed-window",
+    key_prefix="climate_twin"
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Custom response for rate-limited requests."""
+    return jsonify({
+        "error": "Rate limit exceeded",
+        "message": str(e.description),
+        "retry_after": e.retry_after if hasattr(e, 'retry_after') else 60
+    }), 429
 
 # ═══════════════════════════════════════════════════════════════════
 #  GLOBAL STATE
@@ -326,6 +350,7 @@ def _lifecycle_after_request(response):
 # ═══════════════════════════════════════════════════════════════════
 
 @app.route("/api/health")
+@limiter.exempt
 def health_check():
     """Production health check for Render/load balancers."""
     db_ok = False
@@ -346,6 +371,7 @@ def health_check():
 
 
 @app.route("/api/system/health")
+@limiter.exempt
 def system_health():
     """Detailed system health for Mission Control dashboard (FIX 12)."""
     result = {
@@ -404,6 +430,7 @@ def system_health():
 # ═══════════════════════════════════════════════════════════════════
 
 @app.route("/api/scenario", methods=["POST"])
+@limiter.limit("10 per minute")
 def save_scenario():
     data = request.json
     if not data:
@@ -426,6 +453,7 @@ def save_scenario():
         return jsonify({"error": "Failed to save scenario"}), 500
 
 @app.route("/api/simulate", methods=["POST"])
+@limiter.limit("10 per minute")
 def simulate_scenario():
     data = request.json
     if not data:
@@ -522,6 +550,7 @@ def simulate_scenario():
         return jsonify({"error": "Simulation failed"}), 500
 
 @app.route("/api/scenarios")
+@limiter.limit("30 per minute")
 def get_scenarios():
     try:
         with get_db_connection() as conn:
@@ -533,6 +562,7 @@ def get_scenarios():
         return jsonify({"scenarios": []}), 500
 
 @app.route("/api/risk")
+@limiter.limit("30 per minute")
 def get_risk():
     try:
         with get_db_connection() as conn:
@@ -956,6 +986,7 @@ def bg_import_all_india():
     _import_progress["estimated_time_remaining"] = "0m 0s"
 
 @app.route("/api/historical/import-top20", methods=["POST"])
+@limiter.limit("3 per hour")
 def import_top20_historical():
     global _import_progress
     if _import_progress.get("is_running"):
@@ -964,6 +995,7 @@ def import_top20_historical():
     return jsonify({"status": "success", "message": "Top 20 cities import started in background"})
 
 @app.route("/api/historical/import-all-india", methods=["POST"])
+@limiter.limit("3 per hour")
 def import_all_india_historical():
     global _import_progress
     if _import_progress.get("is_running"):
@@ -972,10 +1004,12 @@ def import_all_india_historical():
     return jsonify({"status": "success", "message": "All India historical import started in background"})
 
 @app.route("/api/historical/progress", methods=["GET"])
+@limiter.limit("60 per minute")
 def get_historical_progress():
     global _import_progress
     return jsonify(_import_progress)
 @app.route("/api/historical/import-kanpur", methods=["GET", "POST"])
+@limiter.limit("3 per hour")
 def import_kanpur_historical():
     logger.info("[HISTORICAL] IMPORT STARTED for Kanpur")
     
@@ -1077,6 +1111,7 @@ def import_kanpur_historical():
         }), 500
 
 @app.route("/api/historical/verify", methods=["GET"])
+@limiter.limit("30 per minute")
 def verify_historical():
     try:
         with get_db_connection() as conn:
@@ -1097,6 +1132,7 @@ def verify_historical():
         return jsonify({"health": "ERROR", "message": str(e)}), 500
 
 @app.route("/api/historical/stats", methods=["GET"])
+@limiter.limit("30 per minute")
 def get_historical_stats():
     try:
         with get_db_connection() as conn:
@@ -1130,6 +1166,7 @@ def get_historical_stats():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/historical/status")
+@limiter.limit("30 per minute")
 def get_historical_status():
     try:
         with get_db_connection() as conn:
@@ -1153,6 +1190,7 @@ def get_historical_status():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/import", methods=["POST"])
+@limiter.limit("3 per hour")
 def batch_import_history():
     try:
         end = datetime.now() - timedelta(days=1)
@@ -1164,6 +1202,7 @@ def batch_import_history():
         return jsonify({"error": "Import failed"}), 500
 
 @app.route("/api/update", methods=["POST"])
+@limiter.limit("5 per hour")
 def update_forecast():
     try:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -1334,6 +1373,7 @@ def bg_train_models():
         _train_progress["is_running"] = False
 
 @app.route("/api/train", methods=["POST"])
+@limiter.limit("3 per hour")
 def start_training():
     global _train_progress
     if _train_progress.get("is_running"):
@@ -1350,6 +1390,7 @@ def start_training():
     })
 
 @app.route("/api/train/status", methods=["GET"])
+@limiter.limit("60 per minute")
 def get_train_status():
     return jsonify({
         "trained": _train_progress.get("trained", False),
@@ -1362,6 +1403,7 @@ def get_train_status():
     })
 
 @app.route("/api/predict", methods=["POST"])
+@limiter.limit("20 per minute")
 def generate_predictions():
     data = request.json or {}
     state = data.get("state", "Uttar Pradesh")
@@ -1452,6 +1494,7 @@ def generate_predictions():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/ai/explain", methods=["GET"])
+@limiter.limit("20 per minute")
 def explain_ai():
     try:
         temp_model = joblib.load('models/temperature_model.pkl')
@@ -1496,6 +1539,7 @@ def explain_ai():
         })
 
 @app.route("/api/ai/chat", methods=["POST"])
+@limiter.limit("10 per minute")
 def chat_ai():
     data = request.json or {}
     prompt = data.get("prompt", "")
@@ -1537,6 +1581,7 @@ def chat_ai():
         })
 
 @app.route("/api/predictions")
+@limiter.limit("30 per minute")
 def get_predictions():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
@@ -1551,9 +1596,11 @@ def get_predictions():
 def serve_index(): return send_from_directory(".", "index.html")
 
 @app.route("/api/system/status")
+@limiter.limit("30 per minute")
 def system_status(): return jsonify({"backend": {"status": "operational", "version": "7.1.0_DigitalTwin"}})
 
 @app.route("/api/climate")
+@limiter.limit("30 per minute")
 def get_climate():
     try:
         with get_db_connection() as conn:
@@ -1568,6 +1615,7 @@ def get_climate():
         return jsonify({"status":"online", "temperature":34, "rainfall":112, "humidity":68, "wind_speed":12, "last_updated":datetime.now().isoformat()})
 
 @app.route("/api/analytics")
+@limiter.limit("30 per minute")
 def get_global_analytics():
     """Analytics endpoint with in-memory caching (FIX 11)."""
     global _analytics_cache
@@ -1605,6 +1653,7 @@ def get_global_analytics():
         return jsonify({"analytics":{}})
 
 @app.route("/api/trends")
+@limiter.limit("30 per minute")
 def get_trends():
     try:
         days = int(request.args.get('days', 30))
@@ -1622,6 +1671,7 @@ def get_trends():
         return jsonify({"trends": []})
 
 @app.route("/api/history")
+@limiter.limit("20 per minute")
 def get_history():
     try:
         limit = min(int(request.args.get('limit', 5000)), 10000)
@@ -1634,6 +1684,7 @@ def get_history():
         return jsonify({"data": []})
 
 @app.route("/api/forecast")
+@limiter.limit("20 per minute")
 def get_forecast():
     try:
         limit = min(int(request.args.get('limit', 5000)), 10000)
@@ -1651,6 +1702,7 @@ def get_forecast():
 # ═══════════════════════════════════════════════════════════════════
 
 @app.route("/api/alerts")
+@limiter.limit("20 per minute")
 def get_alerts():
     """Generate disaster alerts from existing climate and risk data."""
     try:

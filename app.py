@@ -587,61 +587,59 @@ except Exception:
         'climate_cache', expire_after=3600, backend='memory'
     )
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-openmeteo = openmeteo_requests.Client(session=retry_session)
+# Open-meteo client removed, we use requests directly for WeatherAPI
 
-def fetch_and_store_openmeteo(cities, start_date, end_date, record_type="history"):
+def fetch_and_store_weather(cities, start_date, end_date, record_type="history"):
     """
-    Fetch weather data and store it with per-city commits.
+    Fetch weather data and store it with per-city commits using WeatherAPI.com.
     Each city is its own short transaction so ingestion never blocks reads. (FIX 1)
     """
     global _last_sync_time
-    api_key = os.environ.get("OPENMETEO_API_KEY")
+    api_key = os.environ.get("WEATHERAPI_KEY")
     
-    if record_type == "history":
-        base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
-    else:
-        base_url = "https://customer-api.open-meteo.com/v1/forecast" if api_key else "https://api.open-meteo.com/v1/forecast"
-        
     total_inserted = 0
 
     for city in cities:
-        params = {
-            "latitude": city["lat"], "longitude": city["lon"],
-            "start_date": start_date, "end_date": end_date,
-            "daily": ["temperature_2m_max","precipitation_sum","wind_speed_10m_max","relative_humidity_2m_mean"],
-            "timezone": "Asia/Kolkata"
-        }
-        if api_key:
-            params["apikey"] = api_key
-            
         try:
-            responses = openmeteo.weather_api(base_url, params=params)
-            if not responses:
+            if not api_key:
+                raise ValueError("WEATHERAPI_KEY not set")
+            
+            if record_type == "history":
+                base_url = "https://api.weatherapi.com/v1/history.json"
+                params = {
+                    "key": api_key,
+                    "q": f"{city['lat']},{city['lon']}",
+                    "dt": start_date,
+                    "end_dt": end_date
+                }
+            else:
+                base_url = "https://api.weatherapi.com/v1/forecast.json"
+                # Calculate days between start and end date (max 14 for forecast)
+                days = (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days + 1
+                days = min(max(days, 1), 14)
+                params = {
+                    "key": api_key,
+                    "q": f"{city['lat']},{city['lon']}",
+                    "days": days
+                }
+
+            response = requests.get(base_url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract daily data
+            forecast_days = data.get("forecast", {}).get("forecastday", [])
+            if not forecast_days:
                 continue
-            response = responses[0]
-            daily = response.Daily()
 
-            temps = daily.Variables(0).ValuesAsNumpy()
-            rains = daily.Variables(1).ValuesAsNumpy()
-            winds = daily.Variables(2).ValuesAsNumpy()
-            hums = daily.Variables(3).ValuesAsNumpy()
-
-            dates = pd.date_range(
-                start = pd.to_datetime(daily.Time(), unit = "s", utc = True),
-                end = pd.to_datetime(daily.TimeEnd(), unit = "s", utc = True),
-                freq = pd.Timedelta(seconds = daily.Interval()),
-                inclusive = "left"
-            )
-
-            # Short transaction per city (FIX 1)
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    for i in range(len(dates)):
-                        t = float(temps[i]) if not np.isnan(temps[i]) else 0
-                        r = float(rains[i]) if not np.isnan(rains[i]) else 0
-                        w = float(winds[i]) if not np.isnan(winds[i]) else 0
-                        h = float(hums[i]) if not np.isnan(hums[i]) else min(100, max(20, 100 - (t * 1.5) + (r * 2)))
-                        date_str = dates[i].strftime('%Y-%m-%d')
+                    for day in forecast_days:
+                        date_str = day["date"]
+                        t = float(day["day"].get("maxtemp_c", 0))
+                        r = float(day["day"].get("totalprecip_mm", 0))
+                        w = float(day["day"].get("maxwind_kph", 0))
+                        h = float(day["day"].get("avghumidity", 60))
 
                         cur.execute("""
                         INSERT INTO climate_data_v5 (record_date, state, district, temperature, rainfall, humidity, wind_speed, latitude, longitude, record_type)
@@ -650,6 +648,7 @@ def fetch_and_store_openmeteo(cities, start_date, end_date, record_type="history
                         """, (date_str, city["state"], city["district"], t, r, h, w, city["lat"], city["lon"], record_type))
                         total_inserted += 1
                 conn.commit()
+                
         except Exception as e:
             logger.warning(f"Primary API failed for {city['district']}: {e}. Trying fallback WTTR.in...")
             try:
@@ -694,7 +693,7 @@ def scheduled_updater():
         today = datetime.now().strftime("%Y-%m-%d")
         future = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
         try:
-            fetch_and_store_openmeteo(INDIAN_CITIES, today, future, "forecast")
+            fetch_and_store_weather(INDIAN_CITIES, today, future, "forecast")
             logger.info("[OK] Scheduled forecast update complete")
         except Exception as e:
             logger.error(f"Scheduled update error: {e}")
@@ -782,6 +781,62 @@ _import_progress = {
     "start_time": 0
 }
 
+def _fetch_historical_weatherapi(lat, lon, start_date_str, end_date_str):
+    api_key = os.environ.get("WEATHERAPI_KEY")
+    if not api_key:
+        raise ValueError("WEATHERAPI_KEY not set")
+
+    start_date = pd.to_datetime(start_date_str)
+    end_date = pd.to_datetime(end_date_str)
+    
+    current_start = start_date
+    all_rows = []
+    
+    while current_start <= end_date:
+        current_end = current_start + timedelta(days=29)
+        if current_end > end_date:
+            current_end = end_date
+        
+        url = "https://api.weatherapi.com/v1/history.json"
+        params = {
+            "key": api_key,
+            "q": f"{lat},{lon}",
+            "dt": current_start.strftime("%Y-%m-%d"),
+            "end_dt": current_end.strftime("%Y-%m-%d")
+        }
+        
+        for attempt in range(3):
+            try:
+                response = requests.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                break
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Failed to fetch history for {lat},{lon} on {current_start.strftime('%Y-%m-%d')}: {e}")
+                    data = {}
+                time.sleep(2)
+        
+        forecast_days = data.get("forecast", {}).get("forecastday", [])
+        for day in forecast_days:
+            date_str = day["date"]
+            t_max = float(day["day"].get("maxtemp_c", 0))
+            t_min = float(day["day"].get("mintemp_c", 0))
+            r = float(day["day"].get("totalprecip_mm", 0))
+            w = float(day["day"].get("maxwind_kph", 0))
+            h = float(day["day"].get("avghumidity", 60))
+            
+            all_rows.append({'record_date': date_str, 'temperature_max': t_max, 'temperature_min': t_min, 'rainfall': r, 'wind_speed': w, 'humidity': h})
+        
+        current_start = current_end + timedelta(days=1)
+    
+    if not all_rows:
+        return pd.DataFrame()
+        
+    df = pd.DataFrame(all_rows)
+    df.fillna(0, inplace=True)
+    return df
+
 def bg_import_top20():
     global _import_progress
     _import_progress["is_running"] = True
@@ -798,45 +853,10 @@ def bg_import_top20():
     for city in TOP_20_CITIES:
         logger.info(f"[HISTORICAL] IMPORT STARTED for {city['district_name']}")
         try:
-            api_key = os.environ.get("OPENMETEO_API_KEY")
-            base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
-            url = (
-                f"{base_url}"
-                f"?latitude={city['lat']}&longitude={city['lon']}"
-                "&start_date=2015-01-01&end_date=2025-12-31"
-                "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean"
-                "&timezone=Asia%2FKolkata"
-            )
-            if api_key:
-                url += f"&apikey={api_key}"
-            
-            # Simple retry logic using a loop
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response = requests.get(url, timeout=60)
-                    response.raise_for_status()
-                    data = response.json()
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise e
-                    time.sleep(2)
-            
-            daily = data.get("daily", {})
-            if not daily or not daily.get("time"):
+            df = _fetch_historical_weatherapi(city['lat'], city['lon'], '2015-01-01', '2025-12-31')
+            if df.empty:
                 continue
-                
-            df = pd.DataFrame({
-                'record_date': daily.get("time"),
-                'temperature_max': daily.get("temperature_2m_max"),
-                'temperature_min': daily.get("temperature_2m_min"),
-                'rainfall': daily.get("precipitation_sum"),
-                'wind_speed': daily.get("wind_speed_10m_max"),
-                'humidity': daily.get("relative_humidity_2m_mean")
-            })
             
-            df.fillna(0, inplace=True)
             df['state_name'] = city['state_name']
             df['district_name'] = city['district_name']
             df['latitude'] = city['lat']
@@ -932,44 +952,10 @@ def bg_import_all_india():
             pass # ignore and proceed to fetch
             
         try:
-            api_key = os.environ.get("OPENMETEO_API_KEY")
-            base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
-            url = (
-                f"{base_url}"
-                f"?latitude={loc['lat']}&longitude={loc['lon']}"
-                "&start_date=2015-01-01&end_date=2025-12-31"
-                "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean"
-                "&timezone=Asia%2FKolkata"
-            )
-            if api_key:
-                url += f"&apikey={api_key}"
-            
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response = requests.get(url, timeout=60)
-                    response.raise_for_status()
-                    data = response.json()
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise e
-                    time.sleep(2)
-            
-            daily = data.get("daily", {})
-            if not daily or not daily.get("time"):
+            df = _fetch_historical_weatherapi(loc['lat'], loc['lon'], '2015-01-01', '2025-12-31')
+            if df.empty:
                 continue
-                
-            df = pd.DataFrame({
-                'record_date': daily.get("time"),
-                'temperature_max': daily.get("temperature_2m_max"),
-                'temperature_min': daily.get("temperature_2m_min"),
-                'rainfall': daily.get("precipitation_sum"),
-                'wind_speed': daily.get("wind_speed_10m_max"),
-                'humidity': daily.get("relative_humidity_2m_mean")
-            })
             
-            df.fillna(0, inplace=True)
             df['state_name'] = loc['state_name']
             df['district_name'] = loc['district_name']
             df['latitude'] = loc['lat']
@@ -1062,37 +1048,9 @@ def import_kanpur_historical():
     logger.info("[HISTORICAL] IMPORT STARTED for Kanpur")
     
     try:
-        api_key = os.environ.get("OPENMETEO_API_KEY")
-        base_url = "https://customer-archive-api.open-meteo.com/v1/archive" if api_key else "https://archive-api.open-meteo.com/v1/archive"
-        url = (
-            f"{base_url}"
-            "?latitude=26.4499&longitude=80.3319"
-            "&start_date=2015-01-01&end_date=2025-12-31"
-            "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean"
-            "&timezone=Asia%2FKolkata"
-        )
-        if api_key:
-            url += f"&apikey={api_key}"
-        
-        response = requests.get(url, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        
-        daily = data.get("daily", {})
-        if not daily or not daily.get("time"):
-            return jsonify({"downloaded": 0, "inserted": 0, "skipped": 0, "errors": ["No data returned from Open-Meteo"]}), 500
-            
-        # Convert data to DataFrame
-        df = pd.DataFrame({
-            'record_date': daily.get("time"),
-            'temperature_max': daily.get("temperature_2m_max"),
-            'temperature_min': daily.get("temperature_2m_min"),
-            'rainfall': daily.get("precipitation_sum"),
-            'wind_speed': daily.get("wind_speed_10m_max"),
-            'humidity': daily.get("relative_humidity_2m_mean")
-        })
-        
-        df.fillna(0, inplace=True)
+        df = _fetch_historical_weatherapi(26.4499, 80.3319, '2015-01-01', '2025-12-31')
+        if df.empty:
+            return jsonify({"downloaded": 0, "inserted": 0, "skipped": 0, "errors": ["No data returned from WeatherAPI"]}), 500
         
         df['state_name'] = 'Uttar Pradesh'
         df['district_name'] = 'Kanpur'
@@ -1247,7 +1205,7 @@ def batch_import_history():
     try:
         end = datetime.now() - timedelta(days=1)
         start = datetime.now() - timedelta(days=31)
-        count = fetch_and_store_openmeteo(INDIAN_CITIES, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), "history")
+        count = fetch_and_store_weather(INDIAN_CITIES, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), "history")
         return jsonify({"status": "success", "message": f"Imported {count} historical records.", "synced_at": datetime.now().isoformat()})
     except Exception as e:
         logger.error(f"Import error: {e}")
@@ -1259,12 +1217,12 @@ def update_forecast():
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         future = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-        count_f = fetch_and_store_openmeteo(INDIAN_CITIES, today, future, "forecast")
+        count_f = fetch_and_store_weather(INDIAN_CITIES, today, future, "forecast")
 
         # Also fetch history so newly added states have data to train on
         end = datetime.now() - timedelta(days=1)
         start = datetime.now() - timedelta(days=31)
-        count_h = fetch_and_store_openmeteo(INDIAN_CITIES, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), "history")
+        count_h = fetch_and_store_weather(INDIAN_CITIES, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), "history")
 
         return jsonify({"status": "success", "message": f"Updated {count_f} forecast and {count_h} history records.", "synced_at": datetime.now().isoformat()})
     except Exception as e:

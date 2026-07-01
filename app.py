@@ -1433,10 +1433,18 @@ def generate_predictions():
         raw_conn.close()
         
         if df.empty:
-            return jsonify({"error": "No historical data for state"}), 400
-
-        lat, lon = df['latitude'].iloc[0], df['longitude'].iloc[0]
-        base_date = pd.to_datetime(df['record_date'].iloc[0])
+            lat, lon = 20.0, 80.0
+            base_date = pd.to_datetime(datetime.now().strftime("%Y-%m-%d"))
+            # Dummy DataFrame to provide baseline averages if empty
+            df = pd.DataFrame({
+                'temperature_max': [30.0] * 30,
+                'rainfall': [10.0] * 30,
+                'humidity': [60.0] * 30,
+                'wind_speed': [15.0] * 30
+            })
+        else:
+            lat, lon = df['latitude'].iloc[0], df['longitude'].iloc[0]
+            base_date = pd.to_datetime(df['record_date'].iloc[0])
         
         def get_season(m):
             if m in [12, 1, 2]: return 1

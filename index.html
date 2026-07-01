@@ -276,6 +276,7 @@
                         <div class="status-row"><span>API Gateway</span><span class="status-indicator" id="sys-api"><span class="status-dot gray"></span> Checking...</span></div>
                     </div>
                     <button class="btn btn-secondary" style="width:100%; margin-top:20px;" onclick="syncData()"><div class="spinner"></div><span><i class="ph ph-arrows-clockwise"></i> Force Manual Sync</span></button>
+                    <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="bulkImportData()"><div class="spinner"></div><span><i class="ph ph-database"></i> Bulk Import (10 Yrs)</span></button>
                 </div>
                 <div class="card">
                     <h3 style="margin-bottom:20px; display:flex; align-items:center; gap:8px;"><i class="ph ph-lightning"></i> Command Actions</h3>
@@ -965,6 +966,26 @@
         toast("Syncing Open-Meteo Telemetry...");
         try { await fetchWithTimeout(`${API}/api/update`, {method:'POST'}, 120000); toast("Pipeline Synced Successfully!", 'success'); fetchSystem(); } 
         catch(e) { toast("Sync Failed — Check connection", 'error', syncData); } 
+    };
+    const bulkImportData = async () => {
+        toast("Initiating 10-Year Bulk Import...");
+        try {
+            await fetch(`${API}/api/historical/import-all-india`, {method:'POST'});
+            let isRunning = true;
+            while(isRunning) {
+                const progReq = await fetch(`${API}/api/historical/progress`);
+                const progData = await progReq.json();
+                if(progData.is_running) {
+                    toast(`Importing... ${progData.progress_percentage}% (${progData.states_completed}/${progData.states_remaining+progData.states_completed} states) ETA: ${progData.estimated_time_remaining}`, 'info');
+                } else {
+                    isRunning = false;
+                    toast("Bulk Import Completed!", 'success');
+                }
+                await new Promise(r => setTimeout(r, 4000));
+            }
+        } catch(e) {
+            toast("Bulk Import Failed", 'error');
+        }
     };
     const trainModels = async () => { 
         setLoading('btn-train', true);

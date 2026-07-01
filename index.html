@@ -989,9 +989,14 @@
             toast("Training models... (might take 10s)");
             await fetchWithTimeout(`${API}/api/train`, {method:'POST'}, 60000);
             
-            await fetchWithTimeout(`${API}/api/predict`, {method:'POST'}, 30000);
-            const r = await fetchWithTimeout(`${API}/api/predictions`); const d = await r.json();
             const state = document.getElementById('ai-state-select').value;
+            await fetchWithTimeout(`${API}/api/predict`, {
+                method:'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({state: state})
+            }, 30000);
+            
+            const r = await fetchWithTimeout(`${API}/api/predictions`); const d = await r.json();
             const preds = d.predictions.filter(p => p.state === state);
             
             if(preds.length > 0) {

@@ -853,7 +853,9 @@ def bg_import_top20():
     for city in TOP_20_CITIES:
         logger.info(f"[HISTORICAL] IMPORT STARTED for {city['district_name']}")
         try:
-            df = _fetch_historical_weatherapi(city['lat'], city['lon'], '2015-01-01', '2025-12-31')
+            start_str = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            end_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            df = _fetch_historical_weatherapi(city['lat'], city['lon'], start_str, end_str)
             if df.empty:
                 continue
             
@@ -952,7 +954,9 @@ def bg_import_all_india():
             pass # ignore and proceed to fetch
             
         try:
-            df = _fetch_historical_weatherapi(loc['lat'], loc['lon'], '2015-01-01', '2025-12-31')
+            start_str = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            end_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            df = _fetch_historical_weatherapi(loc['lat'], loc['lon'], start_str, end_str)
             if df.empty:
                 continue
             
@@ -1048,7 +1052,9 @@ def import_kanpur_historical():
     logger.info("[HISTORICAL] IMPORT STARTED for Kanpur")
     
     try:
-        df = _fetch_historical_weatherapi(26.4499, 80.3319, '2015-01-01', '2025-12-31')
+        start_str = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        end_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        df = _fetch_historical_weatherapi(26.4499, 80.3319, start_str, end_str)
         if df.empty:
             return jsonify({"downloaded": 0, "inserted": 0, "skipped": 0, "errors": ["No data returned from WeatherAPI"]}), 500
         

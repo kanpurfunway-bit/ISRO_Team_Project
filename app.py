@@ -1402,15 +1402,8 @@ def start_training():
 @app.route("/api/train/status", methods=["GET"])
 @limiter.limit("60 per minute")
 def get_train_status():
-    return jsonify({
-        "trained": _train_progress.get("trained", False),
-        "records_used": _train_progress.get("records_used", 0),
-        "model_version": _train_progress.get("model_version", "v1"),
-        "temperature_accuracy": _train_progress.get("temperature_accuracy", 0.0),
-        "rainfall_accuracy": _train_progress.get("rainfall_accuracy", 0.0),
-        "humidity_accuracy": _train_progress.get("humidity_accuracy", 0.0),
-        "wind_accuracy": _train_progress.get("wind_accuracy", 0.0)
-    })
+    global _train_progress
+    return jsonify(_train_progress)
 
 @app.route("/api/predict", methods=["POST"])
 @limiter.limit("20 per minute")

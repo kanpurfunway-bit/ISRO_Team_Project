@@ -993,7 +993,7 @@
             // Poll for training completion
             let retries = 0;
             while(retries < 20) {
-                const progReq = await fetch(`${API}/api/train/progress`);
+                const progReq = await fetch(`${API}/api/train/status`);
                 const progData = await progReq.json();
                 if(!progData.is_running) {
                     if(progData.status && progData.status.startsWith("Error")) {

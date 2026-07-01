@@ -651,7 +651,38 @@ def fetch_and_store_openmeteo(cities, start_date, end_date, record_type="history
                         total_inserted += 1
                 conn.commit()
         except Exception as e:
-            logger.error(f"Failed fetching {city['district']}: {e}")
+            logger.warning(f"Primary API failed for {city['district']}: {e}. Trying fallback WTTR.in...")
+            try:
+                fallback_url = f"https://wttr.in/{city['lat']},{city['lon']}?format=j1"
+                resp = requests.get(fallback_url, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
+                        for w in data.get('weather', []):
+                            date_str = w['date']
+                            if not (start_date <= date_str <= end_date):
+                                continue
+                                
+                            t = float(w.get('maxtempC', 0))
+                            hourly = w.get('hourly', [])
+                            if hourly:
+                                r = sum([float(h.get('precipMM', 0)) for h in hourly])
+                                w_spd = max([float(h.get('WindGustKmph', 0)) for h in hourly])
+                                h_val = sum([float(h.get('humidity', 0)) for h in hourly]) / len(hourly) if len(hourly) > 0 else 60.0
+                            else:
+                                r, w_spd, h_val = 0.0, 0.0, 60.0
+                                
+                            cur.execute("""
+                            INSERT INTO climate_data_v5 (record_date, state, district, temperature, rainfall, humidity, wind_speed, latitude, longitude, record_type)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (record_date, district, record_type) DO UPDATE SET temperature=EXCLUDED.temperature, rainfall=EXCLUDED.rainfall, humidity=EXCLUDED.humidity, wind_speed=EXCLUDED.wind_speed, last_synced=CURRENT_TIMESTAMP;
+                            """, (date_str, city["state"], city["district"], t, r, h_val, w_spd, city["lat"], city["lon"], record_type))
+                            total_inserted += 1
+                    conn.commit()
+            except Exception as fallback_err:
+                logger.error(f"Fallback API also failed for {city['district']}: {fallback_err}")
             continue
 
     _last_sync_time = datetime.now(timezone.utc)
